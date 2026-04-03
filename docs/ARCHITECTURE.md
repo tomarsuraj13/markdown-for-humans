@@ -353,7 +353,7 @@ const editor = new Editor({
 **Keyboard Shortcuts:**
 - `Cmd/Ctrl+S` - Immediate save (bypasses debounce)
 - `Cmd/Ctrl+B, I, U` - Standard formatting
-- `Cmd/Ctrl+K L` - Insert link
+- `Cmd/Ctrl+K Cmd/Ctrl+L` - Insert link
 
 ---
 

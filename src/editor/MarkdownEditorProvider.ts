@@ -567,6 +567,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       case 'auditCheckFile':
         void this.handleAuditCheckFile(message, document, webview);
         break;
+      case 'auditCheckUrl':
+        void this.handleAuditCheckUrl(message, document, webview);
+        break;
     }
   }
 
@@ -622,10 +625,100 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         exists: true,
       });
     } catch {
+      const suggestions: string[] = [];
+      try {
+        // Prepare fuzzy matching suggestions based on basename
+        const normalizedPath = rawRelativePath.replace(/%20/g, ' ');
+        const basename = path.basename(normalizedPath, path.extname(normalizedPath));
+        if (basename.length > 2) {
+          const files = await vscode.workspace.findFiles(`**/*${basename}*.*`, '**/node_modules/**', 5);
+          for (const f of files) {
+            let rel = path.relative(basePath, f.fsPath);
+            rel = rel.replace(/\\/g, '/'); // normalize to web paths
+            if (!rel.startsWith('.')) {
+              rel = './' + rel;
+            }
+            suggestions.push(rel);
+          }
+        }
+      } catch (e) {
+        console.warn('[MD4H] Error finding audit file suggestions:', e);
+      }
+
       webview.postMessage({
         type: 'auditCheckFileResult',
         requestId,
         exists: false,
+        suggestions
+      });
+    }
+  }
+
+  private async handleAuditCheckUrl(
+    message: { type: string; [key: string]: unknown },
+    _document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const url = message.url as string;
+    const requestId = message.requestId as string;
+
+    if (!url) {
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable: false,
+      });
+      return;
+    }
+
+    try {
+      let reachable = false;
+
+      if (typeof globalThis.fetch === 'function') {
+        const res = await globalThis.fetch(url, { method: 'HEAD' });
+        const status = typeof (res as any).status === 'number' ? (res as any).status : 0;
+        reachable = status >= 200 && status < 400;
+      } else {
+        // Node.js fallback using https/http built-in module
+        reachable = await new Promise<boolean>((resolve) => {
+          try {
+            const parsed = new URL(url);
+            const httpModule = parsed.protocol === 'https:' ? require('https') : require('http');
+            const req = httpModule.request(
+              {
+                method: 'HEAD',
+                hostname: parsed.hostname,
+                path: parsed.pathname + parsed.search,
+                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                timeout: 5000,
+              },
+              (res: any) => {
+                resolve(res.statusCode >= 200 && res.statusCode < 400);
+              }
+            );
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => {
+              req.abort();
+              resolve(false);
+            });
+            req.end();
+          } catch {
+            resolve(false);
+          }
+        });
+      }
+
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable,
+      });
+    } catch (e) {
+      console.warn('[MD4H] URL check failed', e);
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable: false,
       });
     }
   }

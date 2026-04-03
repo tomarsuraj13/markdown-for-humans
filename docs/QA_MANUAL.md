@@ -144,7 +144,7 @@ Pick one:
 ### 5.6 Links
 
 **How to use**
-- Toolbar → Link (or `Cmd/Ctrl+K L`)
+- Toolbar → Link (or `Cmd/Ctrl+K Cmd/Ctrl+L`)
 
 **What to do**
 - Create a link with selected text.

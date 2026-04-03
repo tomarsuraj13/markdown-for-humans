@@ -45,21 +45,61 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
             </svg>
           </button>
         </div>
-        <div class="audit-overlay-list">
-          ${issues.map((issue) => `
-            <button class="audit-overlay-item" data-pos="${issue.pos}">
-              <div class="audit-issue-type ${issue.type}">
-                ${issue.type === 'link' ? '🔗' : issue.type === 'image' ? '🖼️' : '📑'}
-              </div>
-              <div class="audit-issue-text">
-                <div class="audit-issue-message">${issue.message}</div>
-                ${issue.target ? `<div class="audit-issue-target">${issue.target}</div>` : ''}
-              </div>
-            </button>
-          `).join('')}
-        </div>
+        <div class="audit-overlay-list"></div>
       </div>
     `;
+
+    const listEl = overlay.querySelector('.audit-overlay-list');
+    if (listEl) {
+      issues.forEach((issue) => {
+        const item = document.createElement('button');
+        item.className = 'audit-overlay-item';
+        item.setAttribute('data-pos', String(issue.pos));
+
+        const typeEl = document.createElement('div');
+        typeEl.className = `audit-issue-type ${issue.type}`;
+        typeEl.textContent = issue.type === 'link' ? '🔗' : issue.type === 'image' ? '🖼️' : '📑';
+
+        const textEl = document.createElement('div');
+        textEl.className = 'audit-issue-text';
+
+        const msgEl = document.createElement('div');
+        msgEl.className = 'audit-issue-message';
+        msgEl.textContent = issue.message;
+        textEl.appendChild(msgEl);
+
+        if (issue.target) {
+          const targetEl = document.createElement('div');
+          targetEl.className = 'audit-issue-target';
+          targetEl.textContent = issue.target;
+          textEl.appendChild(targetEl);
+        }
+
+        if (issue.suggestions && issue.suggestions.length > 0) {
+          const suggestionEl = document.createElement('div');
+          suggestionEl.className = 'audit-issue-suggestions';
+          suggestionEl.style.marginTop = '4px';
+
+          const span = document.createElement('span');
+          span.style.fontSize = '0.85em';
+          span.style.color = 'var(--vscode-charts-green)';
+          span.textContent = `✨ Click to auto-fix -> ${issue.suggestions[0]}`;
+
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.className = 'audit-best-suggestion';
+          hiddenInput.value = issue.suggestions[0];
+
+          suggestionEl.appendChild(span);
+          suggestionEl.appendChild(hiddenInput);
+          textEl.appendChild(suggestionEl);
+        }
+
+        item.appendChild(typeEl);
+        item.appendChild(textEl);
+        listEl.appendChild(item);
+      });
+    }
   }
 
   overlay.classList.add('visible');
@@ -83,10 +123,87 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
     item.addEventListener('click', (e) => {
       const btn = e.currentTarget as HTMLElement;
       const posStr = btn.getAttribute('data-pos');
+      const typeStr = btn.querySelector('.audit-issue-type')?.classList[1]; // Gets 'link', 'image', 'heading'
+      
       if (posStr) {
         const pos = parseInt(posStr, 10);
-        editor.commands.setTextSelection(pos);
-        editor.commands.scrollIntoView();
+        
+        // Get the node to determine the selection range
+        const node = editor.state.doc.nodeAt(pos);
+        const nodeSize = node ? node.nodeSize : 1;
+        
+        // For images, use node selection; for links/headings, use text selection
+        if (typeStr === 'image' && node && (node.type.name === 'image' || node.type.name === 'customImage')) {
+          editor.commands.setNodeSelection(pos);
+        } else {
+          editor.commands.setTextSelection({ from: pos, to: pos + nodeSize });
+        }
+        
+        // Focus the editor
+        editor.commands.focus();
+        
+        // Scroll into view using the same approach as search overlay
+        try {
+          editor.view.dispatch(editor.state.tr.scrollIntoView());
+        } catch {
+          // Fallback: try to scroll to the position
+          requestAnimationFrame(() => {
+            try {
+              const coords = editor.view.coordsAtPos(pos);
+              if (coords) {
+                const element = editor.view.domAtPos(pos).node as Element;
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }
+            } catch {
+              // Last resort: just ensure the editor is focused
+              editor.commands.focus();
+            }
+          });
+        }
+        
+        const currentTarget = btn.querySelector('.audit-issue-target')?.textContent || '';
+        const bestSuggestionInput = btn.querySelector('.audit-best-suggestion') as HTMLInputElement;
+        
+        let suggestionToApply = null;
+        if (bestSuggestionInput && bestSuggestionInput.value) {
+            suggestionToApply = bestSuggestionInput.value;
+        } else {
+            const userInput = prompt(`No auto-fix available. Fix broken ${typeStr}: Enter new value`, currentTarget);
+            if (userInput !== null && userInput.trim() !== '') {
+                suggestionToApply = userInput.trim();
+            }
+        }
+        
+        if (suggestionToApply) {
+           // Get nodeSize
+           let nodeSize = 2; 
+           const node = editor.state.doc.nodeAt(pos);
+           if (node) {
+              nodeSize = node.nodeSize;
+           }
+           
+           if (typeStr === 'image') {
+              try {
+                editor.chain().setNodeSelection(pos).updateAttributes('image', { src: suggestionToApply, 'markdown-src': suggestionToApply }).run();
+              } catch(e) {
+                editor.chain().setNodeSelection(pos).updateAttributes('customImage', { src: suggestionToApply, 'markdown-src': suggestionToApply }).run();
+              }
+           } else if (typeStr === 'link' || typeStr === 'heading') {
+              const href = typeStr === 'heading' ? (suggestionToApply.startsWith('#') ? suggestionToApply : `#${suggestionToApply}`) : suggestionToApply;
+              editor.chain().setTextSelection({ from: pos, to: pos + nodeSize }).setMark('link', { href }).run();
+           }
+           
+           // Remove from list
+           btn.remove();
+           if (overlay.querySelectorAll('.audit-overlay-item').length === 0) {
+              const list = overlay.querySelector('.audit-overlay-list');
+              if (list) {
+                list.innerHTML = `<div style="padding: 20px; text-align: center;">All fixed! 🎉</div>`;
+              }
+           }
+        }
       }
     });
   });

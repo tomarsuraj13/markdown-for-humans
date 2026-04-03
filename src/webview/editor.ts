@@ -675,11 +675,11 @@ function initializeEditor(initialContent: string) {
         return;
       }
 
-      // Check for Ctrl+K L chord completion
+      // Check for Cmd/Ctrl+K Cmd/Ctrl+L chord completion
       if (ctrlKPressed && isMod && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[MD4H] Link shortcut (Ctrl+K L)');
+        console.log('[MD4H] Link shortcut (Cmd/Ctrl+K Cmd/Ctrl+L)');
         if (editor) {
           showLinkDialog(editor);
         }
@@ -1055,7 +1055,20 @@ window.addEventListener('message', (event: MessageEvent) => {
       }
       case 'auditCheckFileResult': {
         import('./features/auditDocument').then(({ handleAuditCheckResult }) => {
-          handleAuditCheckResult(message.requestId as string, message.exists as boolean);
+          handleAuditCheckResult(
+            message.requestId as string,
+            message.exists as boolean,
+            message.suggestions as string[] | undefined
+          );
+        });
+        break;
+      }
+      case 'auditCheckUrlResult': {
+        import('./features/auditDocument').then(({ handleAuditUrlCheckResult }) => {
+          handleAuditUrlCheckResult(
+            message.requestId as string,
+            message.reachable as boolean
+          );
         });
         break;
       }

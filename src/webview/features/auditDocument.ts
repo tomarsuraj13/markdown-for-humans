@@ -10,6 +10,44 @@ export interface AuditIssue {
   pos: number;
   nodeSize: number;
   target: string;
+  suggestions?: string[];
+}
+
+export interface FileCheckResult {
+  exists: boolean;
+  suggestions?: string[];
+}
+
+// Levenshtein distance for fuzzy matching
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) == a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function findBestMatches(target: string, candidates: string[], maxDistance: number = 3): string[] {
+  return candidates
+    .map(c => ({ candidate: c, distance: getLevenshteinDistance(target, c) }))
+    .filter(x => x.distance <= maxDistance)
+    .sort((a, b) => a.distance - b.distance)
+    .map(x => x.candidate);
 }
 
 export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
@@ -43,14 +81,15 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
         });
       } else if (!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('data:')) {
         fileChecks.push(
-          checkFileExistence(src).then((exists) => {
-            if (!exists) {
+          checkFileExistence(src).then((result) => {
+            if (!result.exists) {
               issues.push({
                 type: 'image',
                 message: `Image file not found: ${src}`,
                 pos,
                 nodeSize: node.nodeSize,
                 target: src,
+                suggestions: result.suggestions
               });
             }
           })
@@ -88,14 +127,15 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
           headingLinks.push({ slug: href.slice(1), pos, nodeSize: node.nodeSize });
         } else if (!href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('mailto:')) {
           fileChecks.push(
-            checkFileExistence(href).then((exists) => {
-              if (!exists) {
+            checkFileExistence(href).then((result) => {
+              if (!result.exists) {
                 issues.push({
                   type: 'link',
                   message: `Linked file not found: ${href}`,
                   pos,
                   nodeSize: node.nodeSize,
                   target: href,
+                  suggestions: result.suggestions
                 });
               }
             })
@@ -123,12 +163,14 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
 
   headingLinks.forEach((link) => {
     if (!existingSlugs.has(link.slug)) {
+      const suggestions = findBestMatches(link.slug, Array.from(existingSlugs));
       issues.push({
         type: 'heading',
         message: `Heading anchor not found: #${link.slug}`,
         pos: link.pos,
         nodeSize: link.nodeSize,
         target: link.slug,
+        suggestions: suggestions.length > 0 ? suggestions : undefined
       });
     }
   });
@@ -136,21 +178,30 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
   return issues;
 }
 
-const auditCheckCallbacks = new Map<string, (exists: boolean) => void>();
+const auditCheckCallbacks = new Map<string, (result: FileCheckResult) => void>();
+const auditUrlCheckCallbacks = new Map<string, (reachable: boolean) => void>();
 
-export function handleAuditCheckResult(requestId: string, exists: boolean) {
+export function handleAuditCheckResult(requestId: string, exists: boolean, suggestions?: string[]) {
   const cb = auditCheckCallbacks.get(requestId);
   if (cb) {
-    cb(exists);
+    cb({ exists, suggestions });
     auditCheckCallbacks.delete(requestId);
   }
 }
 
-function checkFileExistence(relativePath: string): Promise<boolean> {
+export function handleAuditUrlCheckResult(requestId: string, reachable: boolean) {
+  const cb = auditUrlCheckCallbacks.get(requestId);
+  if (cb) {
+    cb(reachable);
+    auditUrlCheckCallbacks.delete(requestId);
+  }
+}
+
+function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
   return new Promise((resolve) => {
     const vscodeApi = (window as any).vscode;
     if (!vscodeApi) {
-      resolve(true); 
+      resolve({ exists: true }); 
       return;
     }
     const requestId = `audit-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -159,7 +210,7 @@ function checkFileExistence(relativePath: string): Promise<boolean> {
     setTimeout(() => {
         if (auditCheckCallbacks.has(requestId)) {
             auditCheckCallbacks.delete(requestId);
-            resolve(true);
+            resolve({ exists: false });
         }
     }, 5000);
 
@@ -172,11 +223,40 @@ function checkFileExistence(relativePath: string): Promise<boolean> {
 }
 
 function checkUrlStatus(url: string): Promise<boolean> {
-  return fetch(url, { method: 'HEAD', mode: 'no-cors' })
-    .then((res) => {
-        return res.status === 200 || res.status === 0;
-    })
-    .catch(() => false);
+  const vscodeApi = (window as any).vscode;
+  if (!vscodeApi) {
+    // In the webview itself we cannot reliably inspect status due to CORS.
+    // Treat as unreachable to avoid false positives.
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const requestId = `audit-url-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    auditUrlCheckCallbacks.set(requestId, resolve);
+
+    // Timeout fallback if extension host does not respond.
+    const timeout = setTimeout(() => {
+      if (auditUrlCheckCallbacks.has(requestId)) {
+        auditUrlCheckCallbacks.delete(requestId);
+        resolve(false);
+      }
+    }, 5000);
+
+    vscodeApi.postMessage({
+      type: 'auditCheckUrl',
+      requestId,
+      url,
+    });
+
+    // Ensure callback cleanup resets timer when called.
+    const originalCallback = auditUrlCheckCallbacks.get(requestId);
+    if (originalCallback) {
+      auditUrlCheckCallbacks.set(requestId, (reachable: boolean) => {
+        clearTimeout(timeout);
+        originalCallback(reachable);
+      });
+    }
+  });
 }
 
 function generateHeadingSlug(text: string, existingSlugs: Set<string>): string {

@@ -2571,3 +2571,38 @@
   color: var(--md-muted);
   margin-top: 2px;
 }
+
+.audit-overlay-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--md-muted);
+  padding: 24px;
+}
+
+.audit-overlay-empty p {
+  margin: 0;
+}
+
+.audit-overlay-empty-hint {
+  font-size: 0.95em;
+  color: var(--vscode-textPreformat-foreground, var(--md-muted));
+  margin-top: 8px;
+}
+
+.audit-suggestion-btn {
+  background-color: var(--md-subtle-bg);
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+  margin-left: 4px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.audit-suggestion-btn:hover {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
