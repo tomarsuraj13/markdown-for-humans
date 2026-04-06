@@ -115,25 +115,7 @@
   - Add toolbar button, build summary panel structure, navigation.
 - [x] **Phase 3: URL Validation**
   - Enable async URL checking with `fetch`.
-- [ ] **Phase 4: Auto-fix**
+- [x] **Phase 4: Auto-fix**
   - Add fuzzy matching logic (case correction, slug fixes, file typoes) and map fix actions.
-- [ ] **Phase 5: Polish & Testing**
+- [x] **Phase 5: Polish & Testing**
   - Implement integration tests, verify performance budgets, test accessibility.
-
----
-
-## 7. Implementation Log
-
-_(Fill in as you implement - track progress, decisions, blockers)_
-
----
-
-## 8. Decisions & Tradeoffs
-
-_(To be documented during implementation)_
-
----
-
-## 9. Follow-up & Future Work
-
-_(To be defined based on user testing and rollout feedback)_
