@@ -1,5 +1,5 @@
 import { Editor } from '@tiptap/core';
-import { AuditIssue } from './auditDocument';
+import { AuditIssue, auditPluginKey } from './auditDocument';
 
 export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
   let overlay = document.getElementById('audit-overlay');
@@ -52,9 +52,11 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
     const listEl = overlay.querySelector('.audit-overlay-list');
     if (listEl) {
       issues.forEach((issue) => {
-        const item = document.createElement('button');
+        const item = document.createElement('div');
         item.className = 'audit-overlay-item';
+        item.style.cursor = 'pointer';
         item.setAttribute('data-pos', String(issue.pos));
+        item.setAttribute('data-type', issue.type);
 
         const typeEl = document.createElement('div');
         typeEl.className = `audit-issue-type ${issue.type}`;
@@ -75,26 +77,59 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
           textEl.appendChild(targetEl);
         }
 
+        const actionEl = document.createElement('div');
+        actionEl.className = 'audit-issue-actions';
+        actionEl.style.marginTop = '8px';
+        actionEl.style.display = 'flex';
+        actionEl.style.gap = '8px';
+
         if (issue.suggestions && issue.suggestions.length > 0) {
-          const suggestionEl = document.createElement('div');
-          suggestionEl.className = 'audit-issue-suggestions';
-          suggestionEl.style.marginTop = '4px';
-
-          const span = document.createElement('span');
-          span.style.fontSize = '0.85em';
-          span.style.color = 'var(--vscode-charts-green)';
-          span.textContent = `✨ Click to auto-fix -> ${issue.suggestions[0]}`;
-
-          const hiddenInput = document.createElement('input');
-          hiddenInput.type = 'hidden';
-          hiddenInput.className = 'audit-best-suggestion';
-          hiddenInput.value = issue.suggestions[0];
-
-          suggestionEl.appendChild(span);
-          suggestionEl.appendChild(hiddenInput);
-          textEl.appendChild(suggestionEl);
+          const fixBtn = document.createElement('button');
+          fixBtn.className = 'audit-fix-button';
+          fixBtn.textContent = `✨ Click to auto-fix -> ${issue.suggestions[0]}`;
+          fixBtn.setAttribute('data-suggestion', issue.suggestions[0]);
+          fixBtn.setAttribute('data-pos', String(issue.pos));
+          fixBtn.setAttribute('data-type', issue.type);
+          // Default VS Code button styling
+          fixBtn.style.background = 'var(--vscode-button-background)';
+          fixBtn.style.color = 'var(--vscode-button-foreground)';
+          fixBtn.style.border = 'none';
+          fixBtn.style.padding = '4px 8px';
+          fixBtn.style.cursor = 'pointer';
+          fixBtn.style.borderRadius = '2px';
+          fixBtn.style.flexShrink = '0';
+          
+          actionEl.appendChild(fixBtn);
+        } else {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'audit-manual-input';
+          input.value = issue.target;
+          input.placeholder = `Fix ${issue.type}...`;
+          input.style.flex = '1';
+          input.style.background = 'var(--vscode-input-background)';
+          input.style.color = 'var(--vscode-input-foreground)';
+          input.style.border = '1px solid var(--vscode-input-border)';
+          input.style.padding = '4px';
+          
+          const fixBtn = document.createElement('button');
+          fixBtn.className = 'audit-fix-button manual-fix';
+          fixBtn.textContent = 'Fix';
+          fixBtn.setAttribute('data-pos', String(issue.pos));
+          fixBtn.setAttribute('data-type', issue.type);
+          fixBtn.style.background = 'var(--vscode-button-background)';
+          fixBtn.style.color = 'var(--vscode-button-foreground)';
+          fixBtn.style.border = 'none';
+          fixBtn.style.padding = '4px 8px';
+          fixBtn.style.cursor = 'pointer';
+          fixBtn.style.borderRadius = '2px';
+          fixBtn.style.flexShrink = '0';
+          
+          actionEl.appendChild(input);
+          actionEl.appendChild(fixBtn);
         }
 
+        textEl.appendChild(actionEl);
         item.appendChild(typeEl);
         item.appendChild(textEl);
         listEl.appendChild(item);
@@ -118,31 +153,85 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
     });
   }
 
-  const items = overlay.querySelectorAll('.audit-overlay-item');
-  items.forEach(item => {
-    item.addEventListener('click', (e) => {
-      const btn = e.currentTarget as HTMLElement;
-      const posStr = btn.getAttribute('data-pos');
-      const typeStr = btn.querySelector('.audit-issue-type')?.classList[1]; // Gets 'link', 'image', 'heading'
+  // Helper function to apply a fix to the document
+  function applyFix(pos: number, typeStr: string | null, suggestion: string, item: HTMLElement, allIssues: AuditIssue[]) {
+    const node = editor.state.doc.nodeAt(pos);
+    const nodeSize = node ? node.nodeSize : 1;
+
+    if (typeStr === 'image') {
+      try {
+        editor.chain().setNodeSelection(pos).updateAttributes('image', { src: suggestion, 'markdown-src': suggestion }).run();
+      } catch {
+        try {
+          editor.chain().setNodeSelection(pos).updateAttributes('customImage', { src: suggestion, 'markdown-src': suggestion }).run();
+        } catch {
+          // Failed to apply fix
+          return;
+        }
+      }
+    } else if (typeStr === 'link' || typeStr === 'heading') {
+      const href = typeStr === 'heading' ? (suggestion.startsWith('#') ? suggestion : `#${suggestion}`) : suggestion;
+      editor.chain().setTextSelection({ from: pos, to: pos + nodeSize }).setMark('link', { href }).run();
+    }
+
+    // Remove the decoration for this issue by updating the plugin state
+    const remainingIssues = allIssues.filter(
+      (issue: AuditIssue) => !(issue.pos === pos && issue.nodeSize === nodeSize)
+    );
+    
+    // Update the plugin state with the filtered issues
+    const tr = editor.state.tr;
+    tr.setMeta(auditPluginKey, remainingIssues);
+    editor.view.dispatch(tr);
+
+    // Remove the issue from the list
+    item.remove();
+
+    // Check if all issues are fixed
+    if (overlay?.querySelectorAll('.audit-overlay-item').length === 0) {
+      const list = overlay?.querySelector('.audit-overlay-list');
+      if (list) {
+        list.innerHTML = `<div style="padding: 20px; text-align: center;">All fixed! 🎉</div>`;
+      }
+    }
+  }
+
+  // Combined click handler for navigation and fix actions
+  const itemsNodeList = overlay.querySelectorAll('.audit-overlay-item');
+  
+  itemsNodeList.forEach((itemNode) => {
+    const item = itemNode as HTMLElement;
+    
+    // Navigation click handler
+    item.addEventListener('click', (e: Event) => {
+      const target = e.target as HTMLElement;
       
+      // Don't navigate if clicking on button or input
+      if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') {
+        return;
+      }
+
+      const posStr = item.getAttribute('data-pos');
+      const typeStr = item.getAttribute('data-type');
+
       if (posStr) {
         const pos = parseInt(posStr, 10);
-        
+
         // Get the node to determine the selection range
         const node = editor.state.doc.nodeAt(pos);
         const nodeSize = node ? node.nodeSize : 1;
-        
+
         // For images, use node selection; for links/headings, use text selection
         if (typeStr === 'image' && node && (node.type.name === 'image' || node.type.name === 'customImage')) {
           editor.commands.setNodeSelection(pos);
         } else {
           editor.commands.setTextSelection({ from: pos, to: pos + nodeSize });
         }
-        
+
         // Focus the editor
         editor.commands.focus();
-        
-        // Scroll into view using the same approach as search overlay
+
+        // Scroll into view
         try {
           editor.view.dispatch(editor.state.tr.scrollIntoView());
         } catch {
@@ -157,54 +246,43 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
                 }
               }
             } catch {
-              // Last resort: just ensure the editor is focused
               editor.commands.focus();
             }
           });
         }
-        
-        const currentTarget = btn.querySelector('.audit-issue-target')?.textContent || '';
-        const bestSuggestionInput = btn.querySelector('.audit-best-suggestion') as HTMLInputElement;
-        
-        let suggestionToApply = null;
-        if (bestSuggestionInput && bestSuggestionInput.value) {
-            suggestionToApply = bestSuggestionInput.value;
-        } else {
-            const userInput = prompt(`No auto-fix available. Fix broken ${typeStr}: Enter new value`, currentTarget);
-            if (userInput !== null && userInput.trim() !== '') {
-                suggestionToApply = userInput.trim();
-            }
-        }
-        
-        if (suggestionToApply) {
-           // Get nodeSize
-           let nodeSize = 2; 
-           const node = editor.state.doc.nodeAt(pos);
-           if (node) {
-              nodeSize = node.nodeSize;
-           }
-           
-           if (typeStr === 'image') {
-              try {
-                editor.chain().setNodeSelection(pos).updateAttributes('image', { src: suggestionToApply, 'markdown-src': suggestionToApply }).run();
-              } catch(e) {
-                editor.chain().setNodeSelection(pos).updateAttributes('customImage', { src: suggestionToApply, 'markdown-src': suggestionToApply }).run();
-              }
-           } else if (typeStr === 'link' || typeStr === 'heading') {
-              const href = typeStr === 'heading' ? (suggestionToApply.startsWith('#') ? suggestionToApply : `#${suggestionToApply}`) : suggestionToApply;
-              editor.chain().setTextSelection({ from: pos, to: pos + nodeSize }).setMark('link', { href }).run();
-           }
-           
-           // Remove from list
-           btn.remove();
-           if (overlay.querySelectorAll('.audit-overlay-item').length === 0) {
-              const list = overlay.querySelector('.audit-overlay-list');
-              if (list) {
-                list.innerHTML = `<div style="padding: 20px; text-align: center;">All fixed! 🎉</div>`;
-              }
-           }
-        }
       }
     });
+
+    // Auto-fix button click handler (attaching to item for event delegation)
+    const autoFixBtn = item.querySelector('.audit-fix-button:not(.manual-fix)') as HTMLElement;
+    if (autoFixBtn) {
+      autoFixBtn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const posStr = autoFixBtn.getAttribute('data-pos');
+        const typeStr = autoFixBtn.getAttribute('data-type');
+        const suggestion = autoFixBtn.getAttribute('data-suggestion');
+
+        if (posStr && suggestion) {
+          const pos = parseInt(posStr, 10);
+          applyFix(pos, typeStr, suggestion, item, issues);
+        }
+      });
+    }
+
+    // Manual fix button click handler
+    const manualFixBtn = item.querySelector('.audit-fix-button.manual-fix') as HTMLElement;
+    if (manualFixBtn) {
+      manualFixBtn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const posStr = manualFixBtn.getAttribute('data-pos');
+        const typeStr = manualFixBtn.getAttribute('data-type');
+        const input = manualFixBtn.previousElementSibling as HTMLInputElement;
+
+        if (posStr && input && input.value.trim()) {
+          const pos = parseInt(posStr, 10);
+          applyFix(pos, typeStr, input.value.trim(), item, issues);
+        }
+      });
+    }
   });
 }
