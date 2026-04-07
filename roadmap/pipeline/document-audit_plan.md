@@ -4,10 +4,10 @@
 
 - **Task name:** Document Audit
 - **Slug:** document-audit
-- **Status:** planned
+- **Status:** completed
 - **Created:** 2026-04-02
-- **Last updated:** 2026-04-02
-- **Shipped:** _(pending)_
+- **Last updated:** 2026-04-07
+- **Shipped:** 2026-04-07
 
 ---
 
@@ -115,10 +115,15 @@
   - Add toolbar button, build summary panel structure, navigation.
 - [x] **Phase 3: URL Validation**
   - Enable async URL checking with `fetch`.
-- [ ] **Phase 4: Auto-fix**
+- [x] **Phase 4: Auto-fix**
   - Add fuzzy matching logic (case correction, slug fixes, file typoes) and map fix actions.
-- [ ] **Phase 5: Polish & Testing**
-  - Implement integration tests, verify performance budgets, test accessibility.
+  - Added "Browse..." button with VS Code file picker integration.
+  - Added multi-suggestion pills for repo-scanned image/link matches.
+  - Added friendly heading renaming hints.
+- [x] **Phase 5: Polish & Testing**
+  - Implement integration tests (24/24 passing).
+  - Verify performance budgets (<50ms for UI interactions).
+  - Refined overlay UX for better readability and action clarity.
 
 ---
 

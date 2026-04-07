@@ -6,9 +6,7 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
 import { CustomImage } from '../../webview/extensions/customImage';
-import {
-  runAudit,
-} from '../../webview/features/auditDocument';
+import { runAudit, handleAuditPickFileResult } from '../../webview/features/auditDocument';
 
 describe('Audit Document Feature', () => {
   let editor: Editor;
@@ -109,7 +107,9 @@ describe('Audit Document Feature', () => {
   });
 
   it('should detect broken heading anchor', async () => {
-    editor.commands.setContent('# Existing Heading\n\n[link](#missing-heading)', { contentType: 'markdown' });
+    editor.commands.setContent('# Existing Heading\n\n[link](#missing-heading)', {
+      contentType: 'markdown',
+    });
 
     const results = await runAudit(editor);
 
@@ -122,7 +122,9 @@ describe('Audit Document Feature', () => {
   });
 
   it('should not report issues for valid heading anchor', async () => {
-    editor.commands.setContent('# Existing Heading\n\n[link](#existing-heading)', { contentType: 'markdown' });
+    editor.commands.setContent('# Existing Heading\n\n[link](#existing-heading)', {
+      contentType: 'markdown',
+    });
 
     const results = await runAudit(editor);
 
@@ -130,7 +132,9 @@ describe('Audit Document Feature', () => {
   });
 
   it('should detect broken image URL', async () => {
-    editor.commands.setContent('![alt text](https://example.com/broken-image.png)', { contentType: 'markdown' });
+    editor.commands.setContent('![alt text](https://example.com/broken-image.png)', {
+      contentType: 'markdown',
+    });
 
     mockVscodeApi.postMessage.mockImplementation((message: any) => {
       if (message.type === 'auditCheckUrl') {
@@ -153,7 +157,9 @@ describe('Audit Document Feature', () => {
   });
 
   it('should detect broken link URL', async () => {
-    editor.commands.setContent('[link text](https://example.com/broken-page)', { contentType: 'markdown' });
+    editor.commands.setContent('[link text](https://example.com/broken-page)', {
+      contentType: 'markdown',
+    });
 
     mockVscodeApi.postMessage.mockImplementation((message: any) => {
       if (message.type === 'auditCheckUrl') {
@@ -176,7 +182,8 @@ describe('Audit Document Feature', () => {
   });
 
   it('should handle multiple issues in document', async () => {
-    editor.commands.setContent(`# Heading One
+    editor.commands.setContent(
+      `# Heading One
 
 ![broken image](missing.png)
 
@@ -184,7 +191,9 @@ describe('Audit Document Feature', () => {
 
 [broken anchor](#missing)
 
-![broken url](https://example.com/bad.png)`, { contentType: 'markdown' });
+![broken url](https://example.com/bad.png)`,
+      { contentType: 'markdown' }
+    );
 
     mockVscodeApi.postMessage.mockImplementation((message: any) => {
       if (message.type === 'auditCheckFile') {
@@ -210,10 +219,34 @@ describe('Audit Document Feature', () => {
   });
 
   it('should return empty array for document with no issues', async () => {
-    editor.commands.setContent('# Heading\n\n[valid link](#heading)\n\nNormal text', { contentType: 'markdown' });
+    editor.commands.setContent('# Heading\n\n[valid link](#heading)\n\nNormal text', {
+      contentType: 'markdown',
+    });
 
     const results = await runAudit(editor);
 
     expect(results).toHaveLength(0);
+  });
+
+  // ── NEW TEST: auditPickFile roundtrip ─────────────────────────────────────
+
+  it('handleAuditPickFileResult resolves the pending pick-file callback', async () => {
+    // We manually call handleAuditPickFileResult to simulate extension response
+    // This tests the callback registration/resolution logic without actually
+    // opening a file picker (that happens in the extension host).
+    const { requestFilePickerForIssue } = await import('../../webview/features/auditDocument');
+
+    // postMessage is already mocked via mockVscodeApi
+    let resolvedPath: string | null = null;
+    const pickPromise = requestFilePickerForIssue('image').then(path => {
+      resolvedPath = path;
+    });
+
+    // Extension replies with a selected path
+    const requestId = (mockVscodeApi.postMessage.mock.calls[0][0] as any).requestId as string;
+    handleAuditPickFileResult(requestId, './images/new-image.png');
+
+    await pickPromise;
+    expect(resolvedPath).toBe('./images/new-image.png');
   });
 });

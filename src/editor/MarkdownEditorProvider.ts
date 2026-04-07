@@ -355,7 +355,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePathBase',
           'relativeToDocument'
         );
-        const showImageHoverOverlay = config.get<boolean>('markdownForHumans.imagePreview.hover.enabled', true);
+        const showImageHoverOverlay = config.get<boolean>(
+          'markdownForHumans.imagePreview.hover.enabled',
+          true
+        );
         webviewPanel.webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
@@ -423,7 +426,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       'markdownForHumans.imagePathBase',
       'relativeToDocument'
     );
-    const showImageHoverOverlay = config.get<boolean>('markdownForHumans.imagePreview.hover.enabled', true);
+    const showImageHoverOverlay = config.get<boolean>(
+      'markdownForHumans.imagePreview.hover.enabled',
+      true
+    );
 
     webview.postMessage({
       type: 'update',
@@ -463,7 +469,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePathBase',
           'relativeToDocument'
         );
-        const showImageHoverOverlay = config.get<boolean>('markdownForHumans.imagePreview.hover.enabled', true);
+        const showImageHoverOverlay = config.get<boolean>(
+          'markdownForHumans.imagePreview.hover.enabled',
+          true
+        );
         webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
@@ -570,6 +579,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       case 'auditCheckUrl':
         void this.handleAuditCheckUrl(message, document, webview);
         break;
+      case 'auditPickFile':
+        void this.handleAuditPickFile(message, document, webview);
+        break;
     }
   }
 
@@ -602,6 +614,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const rawRelativePath = message.relativePath as string;
     const requestId = message.requestId as string;
     const basePath = this.getImageBasePath(document);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
 
     if (!basePath) {
       webview.postMessage({
@@ -627,19 +640,74 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     } catch {
       const suggestions: string[] = [];
       try {
-        // Prepare fuzzy matching suggestions based on basename
+        // Enhanced fuzzy matching suggestions
         const normalizedPath = rawRelativePath.replace(/%20/g, ' ');
         const basename = path.basename(normalizedPath, path.extname(normalizedPath));
+        const extension = path.extname(normalizedPath).toLowerCase();
+
         if (basename.length > 2) {
-          const files = await vscode.workspace.findFiles(`**/*${basename}*.*`, '**/node_modules/**', 5);
-          for (const f of files) {
-            let rel = path.relative(basePath, f.fsPath);
+          console.log('[MD4H] Searching for suggestions for basename:', basename, 'extension:', extension);
+
+          // Search from workspace root, then convert to relative paths
+          const workspaceRoot = workspaceFolder?.uri.fsPath || basePath;
+
+          // Strategy 1: Exact basename match with any extension
+          const exactBasenameFiles = await vscode.workspace.findFiles(
+            `**/${basename}.*`,
+            '**/node_modules/**',
+            10
+          );
+
+          // Strategy 2: Fuzzy basename matching - search for files containing the basename
+          const fuzzyFiles = await vscode.workspace.findFiles(
+            `**/*${basename}*.*`,
+            '**/node_modules/**',
+            10
+          );
+
+          // Strategy 3: Find some files with the same extension as fallback
+          let extensionFiles: vscode.Uri[] = [];
+          if (extension) {
+            try {
+              extensionFiles = await vscode.workspace.findFiles(
+                `**/*${extension}`,
+                '**/node_modules/**',
+                5
+              );
+            } catch (e) {
+              // Ignore errors
+            }
+          }
+
+          // Combine and deduplicate results
+          const allFiles = [...exactBasenameFiles, ...fuzzyFiles, ...extensionFiles];
+          const uniqueFiles = Array.from(new Set(allFiles.map(f => f.fsPath)));
+
+          // Convert to relative paths and filter by extension preference
+          for (const filePath of uniqueFiles.slice(0, 8)) {
+            // Limit to 8 suggestions
+            let rel = path.relative(basePath, filePath);
             rel = rel.replace(/\\/g, '/'); // normalize to web paths
             if (!rel.startsWith('.')) {
               rel = './' + rel;
             }
-            suggestions.push(rel);
+
+            // Prioritize files with matching extensions
+            if (extension && path.extname(filePath).toLowerCase() === extension) {
+              suggestions.unshift(rel); // Add to front for priority
+            } else {
+              suggestions.push(rel);
+            }
           }
+
+          // Remove duplicates while preserving priority order
+          const seen = new Set<string>();
+          const deduped = suggestions.filter(sug => {
+            if (seen.has(sug)) return false;
+            seen.add(sug);
+            return true;
+          });
+          suggestions.splice(0, suggestions.length, ...deduped);
         }
       } catch (e) {
         console.warn('[MD4H] Error finding audit file suggestions:', e);
@@ -649,8 +717,97 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         type: 'auditCheckFileResult',
         requestId,
         exists: false,
-        suggestions
+        suggestions: suggestions.slice(0, 5), // Limit to 5 for UI
       });
+    }
+  }
+
+  /**
+   * Generate a fuzzy glob pattern for file matching.
+   * Creates patterns that match files with small character differences.
+   */
+  private generateFuzzyPattern(basename: string): string {
+    if (basename.length <= 3) {
+      return `*${basename}*.*`;
+    }
+
+    // For longer names, use a broader pattern to catch variations
+    // Instead of complex brace expansion, use a simple wildcard approach
+    return `*${basename}*.*`;
+  }
+
+  /**
+   * Open a VS Code file picker dialog for the Document Audit feature.
+   *
+   * Sends back an 'auditPickFileResult' message with the relative path of the
+   * file selected by the user, or null if the user cancelled.
+   *
+   * @param message - Webview message containing requestId and fileType ('image' | 'any').
+   * @param document - Active text document (used to derive the relative path base).
+   * @param webview - Target webview to post the result back to.
+   */
+  private async handleAuditPickFile(
+    message: { type: string; [key: string]: unknown },
+    document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const requestId = message.requestId as string;
+    const fileType = message.fileType as string;
+    const basePath = this.getImageBasePath(document);
+
+    // Build file-type filter
+    const imageFilters: { [name: string]: string[] } = {
+      Images: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif'],
+    };
+    const allFilters: { [name: string]: string[] } = {
+      'All Files': ['*'],
+      Markdown: ['md', 'mdx'],
+      Images: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
+    };
+    const filters = fileType === 'image' ? imageFilters : allFilters;
+
+    try {
+      const defaultUri = basePath ? vscode.Uri.file(basePath) : undefined;
+      const selected = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        canSelectFolders: false,
+        canSelectFiles: true,
+        openLabel: 'Select File',
+        defaultUri,
+        filters,
+      });
+
+      if (!selected || selected.length === 0) {
+        // User cancelled
+        webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: null });
+        return;
+      }
+
+      const absoluteSelected = selected[0].fsPath;
+
+      // Compute path relative to the document's base directory
+      let relativePath: string | null = null;
+      if (basePath) {
+        const rel = path.relative(basePath, absoluteSelected);
+        // Only use relative path if the file is within or near the base directory
+        if (!path.isAbsolute(rel)) {
+          // Normalize to forward-slashes for markdown compatibility
+          relativePath = rel.replace(/\\/g, '/');
+          if (!relativePath.startsWith('.')) {
+            relativePath = './' + relativePath;
+          }
+        }
+      }
+
+      // Fall back to the absolute path when file is outside the document root
+      if (!relativePath) {
+        relativePath = absoluteSelected.replace(/\\/g, '/');
+      }
+
+      webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: relativePath });
+    } catch (e) {
+      console.error('[MD4H] handleAuditPickFile error:', e);
+      webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: null });
     }
   }
 
@@ -680,7 +837,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         reachable = status >= 200 && status < 400;
       } else {
         // Node.js fallback using https/http built-in module
-        reachable = await new Promise<boolean>((resolve) => {
+        reachable = await new Promise<boolean>(resolve => {
           try {
             const parsed = new URL(url);
             const httpModule = parsed.protocol === 'https:' ? require('https') : require('http');

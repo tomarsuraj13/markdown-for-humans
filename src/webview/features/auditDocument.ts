@@ -4,6 +4,9 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export type AuditIssueType = 'link' | 'image' | 'heading';
 
+/** File type filter hint passed to the extension when opening a file picker */
+export type AuditFileType = 'image' | 'any';
+
 export interface AuditIssue {
   type: AuditIssueType;
   message: string;
@@ -43,11 +46,52 @@ function getLevenshteinDistance(a: string, b: string): number {
 }
 
 function findBestMatches(target: string, candidates: string[], maxDistance: number = 3): string[] {
-  return candidates
+  const matches = candidates
     .map(c => ({ candidate: c, distance: getLevenshteinDistance(target, c) }))
     .filter(x => x.distance <= maxDistance)
     .sort((a, b) => a.distance - b.distance)
     .map(x => x.candidate);
+
+  // For headings, also try some intelligent transformations
+  if (matches.length === 0 && target.length > 3) {
+    const transformedCandidates: string[] = [];
+
+    // Try removing common prefixes/suffixes that might have changed
+    const prefixes = ['the-', 'a-', 'an-', 'my-', 'our-', 'your-'];
+    const suffixes = ['-section', '-part', '-chapter', '-guide'];
+
+    for (const prefix of prefixes) {
+      if (target.startsWith(prefix)) {
+        const withoutPrefix = target.slice(prefix.length);
+        transformedCandidates.push(withoutPrefix);
+      }
+    }
+
+    for (const suffix of suffixes) {
+      if (target.endsWith(suffix)) {
+        const withoutSuffix = target.slice(0, -suffix.length);
+        transformedCandidates.push(withoutSuffix);
+      }
+    }
+
+    // Try normalizing spaces and case
+    const normalizedTarget = target.toLowerCase().replace(/[-_\s]+/g, '-');
+    transformedCandidates.push(normalizedTarget);
+
+    // Find matches for transformed versions
+    for (const transformed of transformedCandidates) {
+      const transformedMatches = candidates
+        .map(c => ({ candidate: c, distance: getLevenshteinDistance(transformed, c) }))
+        .filter(x => x.distance <= maxDistance)
+        .sort((a, b) => a.distance - b.distance)
+        .map(x => x.candidate);
+
+      matches.push(...transformedMatches);
+    }
+  }
+
+  // Remove duplicates and limit results
+  return Array.from(new Set(matches)).slice(0, 5);
 }
 
 export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
@@ -61,7 +105,7 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
   const fileChecks: Promise<void>[] = [];
   const headingLinks: { slug: string; pos: number; nodeSize: number }[] = [];
 
-  doc.descendants((node) => {
+  doc.descendants(node => {
     if (node.type.name === 'heading') {
       const text = node.textContent;
       generateHeadingSlug(text, existingSlugs);
@@ -79,9 +123,13 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
           nodeSize: node.nodeSize,
           target: '',
         });
-      } else if (!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('data:')) {
+      } else if (
+        !src.startsWith('http://') &&
+        !src.startsWith('https://') &&
+        !src.startsWith('data:')
+      ) {
         fileChecks.push(
-          checkFileExistence(src).then((result) => {
+          checkFileExistence(src).then(result => {
             if (!result.exists) {
               issues.push({
                 type: 'image',
@@ -89,14 +137,14 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
                 pos,
                 nodeSize: node.nodeSize,
                 target: src,
-                suggestions: result.suggestions
+                suggestions: result.suggestions,
               });
             }
           })
         );
       } else if (src.startsWith('http://') || src.startsWith('https://')) {
         fileChecks.push(
-          checkUrlStatus(src).then((ok) => {
+          checkUrlStatus(src).then(ok => {
             if (!ok) {
               issues.push({
                 type: 'image',
@@ -125,9 +173,13 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
           });
         } else if (href.startsWith('#')) {
           headingLinks.push({ slug: href.slice(1), pos, nodeSize: node.nodeSize });
-        } else if (!href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('mailto:')) {
+        } else if (
+          !href.startsWith('http://') &&
+          !href.startsWith('https://') &&
+          !href.startsWith('mailto:')
+        ) {
           fileChecks.push(
-            checkFileExistence(href).then((result) => {
+            checkFileExistence(href).then(result => {
               if (!result.exists) {
                 issues.push({
                   type: 'link',
@@ -135,14 +187,14 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
                   pos,
                   nodeSize: node.nodeSize,
                   target: href,
-                  suggestions: result.suggestions
+                  suggestions: result.suggestions,
                 });
               }
             })
           );
         } else if (href.startsWith('http://') || href.startsWith('https://')) {
-           fileChecks.push(
-            checkUrlStatus(href).then((ok) => {
+          fileChecks.push(
+            checkUrlStatus(href).then(ok => {
               if (!ok) {
                 issues.push({
                   type: 'link',
@@ -161,7 +213,7 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
 
   await Promise.all(fileChecks);
 
-  headingLinks.forEach((link) => {
+  headingLinks.forEach(link => {
     if (!existingSlugs.has(link.slug)) {
       const suggestions = findBestMatches(link.slug, Array.from(existingSlugs));
       issues.push({
@@ -170,7 +222,7 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
         pos: link.pos,
         nodeSize: link.nodeSize,
         target: link.slug,
-        suggestions: suggestions.length > 0 ? suggestions : undefined
+        suggestions: suggestions.length > 0 ? suggestions : undefined,
       });
     }
   });
@@ -197,21 +249,77 @@ export function handleAuditUrlCheckResult(requestId: string, reachable: boolean)
   }
 }
 
-function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
-  return new Promise((resolve) => {
+// --- File picker (Browse button) request/response ----------------------------
+
+/**
+ * Callbacks awaiting a 'auditPickFileResult' response from the extension host.
+ * Key: requestId, Value: resolve function
+ */
+const auditPickFileCallbacks = new Map<string, (path: string | null) => void>();
+
+/**
+ * Open a file picker dialog in the extension host and return the selected path
+ * relative to the document, or null if the user cancelled.
+ *
+ * @param fileType - Filter hint: 'image' shows only image files, 'any' shows all files.
+ * @returns Relative path chosen by the user, or null on cancel.
+ */
+export function requestFilePickerForIssue(fileType: AuditFileType): Promise<string | null> {
+  return new Promise(resolve => {
     const vscodeApi = (window as any).vscode;
     if (!vscodeApi) {
-      resolve({ exists: true }); 
+      resolve(null);
+      return;
+    }
+    const requestId = `audit-pick-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    auditPickFileCallbacks.set(requestId, resolve);
+
+    // 30 second timeout – file picker is user-driven so it needs a longer window
+    setTimeout(() => {
+      if (auditPickFileCallbacks.has(requestId)) {
+        auditPickFileCallbacks.delete(requestId);
+        resolve(null);
+      }
+    }, 30000);
+
+    vscodeApi.postMessage({
+      type: 'auditPickFile',
+      requestId,
+      fileType,
+    });
+  });
+}
+
+/**
+ * Called by the webview message handler when the extension replies with the
+ * user's file selection (or null for cancel).
+ *
+ * @param requestId - Must match the id from requestFilePickerForIssue.
+ * @param selectedPath - Relative path chosen, or null if cancelled.
+ */
+export function handleAuditPickFileResult(requestId: string, selectedPath: string | null): void {
+  const cb = auditPickFileCallbacks.get(requestId);
+  if (cb) {
+    cb(selectedPath);
+    auditPickFileCallbacks.delete(requestId);
+  }
+}
+
+function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
+  return new Promise(resolve => {
+    const vscodeApi = (window as any).vscode;
+    if (!vscodeApi) {
+      resolve({ exists: true });
       return;
     }
     const requestId = `audit-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     auditCheckCallbacks.set(requestId, resolve);
-    
+
     setTimeout(() => {
-        if (auditCheckCallbacks.has(requestId)) {
-            auditCheckCallbacks.delete(requestId);
-            resolve({ exists: false });
-        }
+      if (auditCheckCallbacks.has(requestId)) {
+        auditCheckCallbacks.delete(requestId);
+        resolve({ exists: false });
+      }
     }, 5000);
 
     vscodeApi.postMessage({
@@ -230,7 +338,7 @@ function checkUrlStatus(url: string): Promise<boolean> {
     return Promise.resolve(false);
   }
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const requestId = `audit-url-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     auditUrlCheckCallbacks.set(requestId, resolve);
 
@@ -293,24 +401,24 @@ const auditPlugin = new Plugin({
         const decos = issues.map((issue: AuditIssue) => {
           return Decoration.inline(issue.pos, issue.pos + issue.nodeSize, {
             class: 'validation-error-highlight',
-            title: issue.message
+            title: issue.message,
           });
         });
         return DecorationSet.create(tr.doc, decos);
       }
       return old.map(tr.mapping, tr.doc);
-    }
+    },
   },
   props: {
     decorations(state) {
       return this.getState(state);
-    }
-  }
+    },
+  },
 });
 
 export const DocumentAuditExtension = Extension.create({
   name: 'documentAudit',
   addProseMirrorPlugins() {
     return [auditPlugin];
-  }
+  },
 });

@@ -1065,9 +1065,15 @@ window.addEventListener('message', (event: MessageEvent) => {
       }
       case 'auditCheckUrlResult': {
         import('./features/auditDocument').then(({ handleAuditUrlCheckResult }) => {
-          handleAuditUrlCheckResult(
+          handleAuditUrlCheckResult(message.requestId as string, message.reachable as boolean);
+        });
+        break;
+      }
+      case 'auditPickFileResult': {
+        import('./features/auditDocument').then(({ handleAuditPickFileResult }) => {
+          handleAuditPickFileResult(
             message.requestId as string,
-            message.reachable as boolean
+            (message.selectedPath as string | null) ?? null
           );
         });
         break;
@@ -1393,14 +1399,14 @@ window.addEventListener('auditDocument', async () => {
   try {
     const { runAudit, auditPluginKey } = await import('./features/auditDocument');
     const { showAuditOverlay } = await import('./features/auditOverlay');
-    
+
     // Clear old decorations
     editor.view.dispatch(editor.state.tr.setMeta(auditPluginKey, []));
-    
+
     const issues = await runAudit(editor);
     console.log('[MD4H] Audit complete, issues found:', issues.length);
     showAuditOverlay(editor, issues);
-    
+
     // Apply decorations
     if (issues.length > 0) {
       editor.view.dispatch(editor.state.tr.setMeta(auditPluginKey, issues));
