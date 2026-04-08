@@ -655,6 +655,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const fuzzyPattern = workspaceFolder
             ? new vscode.RelativePattern(workspaceFolder, `**/*${basename}*.*`)
             : `**/*${basename}*.*`;
+          const shouldRunFuzzySearch = basename.length >= 4;
           const extensionPattern =
             extension && workspaceFolder
               ? new vscode.RelativePattern(workspaceFolder, `**/*${extension}`)
@@ -669,8 +670,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             8
           );
 
-          // Strategy 2: Fuzzy basename matching - search for files containing the basename
-          const fuzzyFiles = await vscode.workspace.findFiles(fuzzyPattern, searchExclude, 6);
+          // Strategy 2: Fuzzy basename matching for sufficiently specific names.
+          // Very short basenames create broad scans and low-quality suggestions.
+          const fuzzyFiles = shouldRunFuzzySearch
+            ? await vscode.workspace.findFiles(fuzzyPattern, searchExclude, 6)
+            : [];
 
           // Strategy 3: Find some files with the same extension as fallback
           let extensionFiles: vscode.Uri[] = [];
@@ -723,20 +727,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         suggestions: suggestions.slice(0, 5), // Limit to 5 for UI
       });
     }
-  }
-
-  /**
-   * Generate a fuzzy glob pattern for file matching.
-   * Creates patterns that match files with small character differences.
-   */
-  private generateFuzzyPattern(basename: string): string {
-    if (basename.length <= 3) {
-      return `*${basename}*.*`;
-    }
-
-    // For longer names, use a broader pattern to catch variations
-    // Instead of complex brace expansion, use a simple wildcard approach
-    return `*${basename}*.*`;
   }
 
   /**
