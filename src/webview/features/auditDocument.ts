@@ -1,6 +1,7 @@
 import { Editor, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { getLevenshteinDistance } from './levenshtein';
 
 export type AuditIssueType = 'link' | 'image' | 'heading';
 
@@ -19,30 +20,6 @@ export interface AuditIssue {
 export interface FileCheckResult {
   exists: boolean;
   suggestions?: string[];
-}
-
-// Levenshtein distance for fuzzy matching
-function getLevenshteinDistance(a: string, b: string): number {
-  const matrix = [];
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) == a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
 }
 
 function findBestMatches(target: string, candidates: string[], maxDistance: number = 3): string[] {
@@ -105,14 +82,12 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
   const fileChecks: Promise<void>[] = [];
   const headingLinks: { slug: string; pos: number; nodeSize: number }[] = [];
 
-  doc.descendants(node => {
+  doc.descendants((node, pos) => {
     if (node.type.name === 'heading') {
       const text = node.textContent;
       generateHeadingSlug(text, existingSlugs);
     }
-  });
 
-  doc.descendants((node, pos) => {
     if (node.type.name === 'image' || node.type.name === 'customImage') {
       const src = node.attrs.src;
       if (!src) {

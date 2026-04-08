@@ -2670,9 +2670,10 @@
   font-size: 0.82em;
   padding: 3px 10px;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  /* transition: background-color 0.15s, color 0.15s, border-color 0.15s; */
   align-self: flex-start;
 }
+.audit-overlay-item:focus {outline: 2px solid var(--vscode-focusBorder);outline-offset: -1px;background-color: var(--md-hover-bg);}
 
 .audit-browse-btn:hover:not(:disabled) {
   background-color: var(--md-hover-bg);

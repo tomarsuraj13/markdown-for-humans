@@ -624,14 +624,8 @@ function initializeEditor(initialContent: string) {
     const keydownHandler = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey; // Cmd on Mac, Ctrl on Windows/Linux
 
-      // Log ALL modifier key presses for debugging
-      if (isMod) {
-        console.log(`[MD4H] Key pressed: ${e.key}, metaKey: ${e.metaKey}, ctrlKey: ${e.ctrlKey}`);
-      }
-
       // Save shortcut - immediate save
       if (isMod && e.key === 's') {
-        console.log('[MD4H] *** SAVE SHORTCUT TRIGGERED ***');
         e.preventDefault();
         e.stopPropagation();
         immediateUpdate();
@@ -655,7 +649,6 @@ function initializeEditor(initialContent: string) {
 
       if (isMod && formattingShortcuts.includes(e.key.toLowerCase())) {
         e.stopPropagation(); // Stop event from reaching VS Code
-        console.log(`[MD4H] Intercepted Cmd+${e.key.toUpperCase()} for editor`);
         // TipTap will handle the formatting
         return;
       }
@@ -671,7 +664,6 @@ function initializeEditor(initialContent: string) {
           ctrlKPressed = false;
           ctrlKTimer = null;
         }, 1000); // 1 second timeout for chord completion
-        console.log('[MD4H] Ctrl+K pressed, waiting for second key');
         return;
       }
 
@@ -679,7 +671,6 @@ function initializeEditor(initialContent: string) {
       if (ctrlKPressed && isMod && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[MD4H] Link shortcut (Cmd/Ctrl+K Cmd/Ctrl+L)');
         if (editor) {
           showLinkDialog(editor);
         }
@@ -705,7 +696,6 @@ function initializeEditor(initialContent: string) {
       if (isMod && e.key === 'f') {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[MD4H] Search shortcut');
         if (editor) {
           toggleSearchOverlay(editor);
         }

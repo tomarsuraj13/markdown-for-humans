@@ -648,32 +648,35 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         if (basename.length > 2) {
           console.log('[MD4H] Searching for suggestions for basename:', basename, 'extension:', extension);
 
-          // Search from workspace root, then convert to relative paths
-          const workspaceRoot = workspaceFolder?.uri.fsPath || basePath;
+          const searchExclude = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.next/**}';
+          const exactPattern = workspaceFolder
+            ? new vscode.RelativePattern(workspaceFolder, `**/${basename}.*`)
+            : `**/${basename}.*`;
+          const fuzzyPattern = workspaceFolder
+            ? new vscode.RelativePattern(workspaceFolder, `**/*${basename}*.*`)
+            : `**/*${basename}*.*`;
+          const extensionPattern =
+            extension && workspaceFolder
+              ? new vscode.RelativePattern(workspaceFolder, `**/*${extension}`)
+              : extension
+                ? `**/*${extension}`
+                : null;
 
           // Strategy 1: Exact basename match with any extension
           const exactBasenameFiles = await vscode.workspace.findFiles(
-            `**/${basename}.*`,
-            '**/node_modules/**',
-            10
+            exactPattern,
+            searchExclude,
+            8
           );
 
           // Strategy 2: Fuzzy basename matching - search for files containing the basename
-          const fuzzyFiles = await vscode.workspace.findFiles(
-            `**/*${basename}*.*`,
-            '**/node_modules/**',
-            10
-          );
+          const fuzzyFiles = await vscode.workspace.findFiles(fuzzyPattern, searchExclude, 6);
 
           // Strategy 3: Find some files with the same extension as fallback
           let extensionFiles: vscode.Uri[] = [];
-          if (extension) {
+          if (extensionPattern) {
             try {
-              extensionFiles = await vscode.workspace.findFiles(
-                `**/*${extension}`,
-                '**/node_modules/**',
-                5
-              );
+              extensionFiles = await vscode.workspace.findFiles(extensionPattern, searchExclude, 3);
             } catch (e) {
               // Ignore errors
             }

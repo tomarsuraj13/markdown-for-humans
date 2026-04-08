@@ -15,30 +15,7 @@ import {
   auditPluginKey,
   requestFilePickerForIssue,
 } from './auditDocument';
-
-// Levenshtein distance for fuzzy matching (copied from auditDocument.ts)
-function getLevenshteinDistance(a: string, b: string): number {
-  const matrix = [];
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) == a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
+import { getLevenshteinDistance } from './levenshtein';
 
 // Maximum number of suggestion pills to show per issue (keeps the UI clean).
 const MAX_SUGGESTION_PILLS = 5;
@@ -715,7 +692,8 @@ function applyFix(
   editor.view.dispatch(fixTr);
 
   // Update the shared issues array in-place so other closures see the update
-  allIssues.splice(0, allIssues.length, ...mappedIssues);
+  allIssues.length = 0;
+  allIssues.push(...mappedIssues);
 
   // Update DOM attributes of remaining items in the overlay to stay in sync
   const otherItems = overlay.querySelectorAll('.audit-overlay-item');
