@@ -134,9 +134,16 @@ export function showAuditOverlay(editor: Editor, issues: AuditIssue[]) {
 
   const listEl = overlay.querySelector('.audit-overlay-list');
   if (listEl) {
-    issues.forEach(issue => {
+    issues.forEach((issue, index) => {
       const item = buildIssueItem(issue);
       listEl.appendChild(item);
+      
+      // Add a horizontal line if it's not the very last issue in the array
+      if (index < issues.length - 1) {
+        const separator = document.createElement('hr');
+        separator.className = 'audit-issue-separator';    
+        listEl.appendChild(separator);
+      }
     });
   }
 
@@ -183,6 +190,7 @@ function buildIssueItem(issue: AuditIssue): HTMLElement {
   item.className = 'audit-overlay-item';
   item.setAttribute('data-pos', String(issue.pos));
   item.setAttribute('data-type', issue.type);
+  item.tabIndex = 0;
 
   // Icon column
   const typeEl = document.createElement('div');
@@ -193,10 +201,23 @@ function buildIssueItem(issue: AuditIssue): HTMLElement {
   const textEl = document.createElement('div');
   textEl.className = 'audit-issue-text';
 
+  const headerEl = document.createElement('div');
+  headerEl.className = 'audit-issue-header';
+
   const msgEl = document.createElement('div');
   msgEl.className = 'audit-issue-message';
   msgEl.textContent = issue.message;
-  textEl.appendChild(msgEl);
+  headerEl.appendChild(msgEl);
+
+  const navBtn = document.createElement('button');
+  navBtn.className = 'audit-issue-nav-btn';
+  navBtn.setAttribute('type', 'button');
+  navBtn.setAttribute('aria-label', 'Navigate to issue');
+  navBtn.title = 'Jump to issue';
+  navBtn.textContent = '↗';
+  headerEl.appendChild(navBtn);
+
+  textEl.appendChild(headerEl);
 
   if (issue.target) {
     const targetEl = document.createElement('div');
@@ -514,18 +535,23 @@ function wireItemHandlers(
   allIssues: AuditIssue[],
   overlay: HTMLElement
 ) {
-  // Clicking the item body (not a control) navigates to position
-  item.addEventListener('click', (e: Event) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'BUTTON' ||
-      target.tagName === 'INPUT' ||
-      target.closest('button') ||
-      target.closest('.audit-suggestion-pills')
-    ) {
-      return;
+  // Navigate button: jump to issue, keep highlight, close overlay.
+  const navBtn = item.querySelector('.audit-issue-nav-btn') as HTMLButtonElement | null;
+  if (navBtn) {
+    navBtn.addEventListener('click', (e: Event) => {
+      e.stopPropagation();
+      navigateToIssue(item, editor);
+      overlay.classList.remove('visible');
+      auditPreviewPopover.hide();
+    });
+  }
+
+  // Allow keyboard navigation on issue rows
+  item.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navBtn?.click();
     }
-    navigateToIssue(item, editor);
   });
 
   // Suggestion pill → apply immediately
@@ -618,18 +644,21 @@ function navigateToIssue(item: HTMLElement, editor: Editor): void {
 
   editor.commands.focus();
 
-  try {
-    editor.view.dispatch(editor.state.tr.scrollIntoView());
-  } catch {
-    requestAnimationFrame(() => {
+  // Center the selected issue in the viewport for consistent navigation feedback.
+  requestAnimationFrame(() => {
+    try {
+      const resolved = editor.view.domAtPos(pos).node as Node;
+      const element =
+        resolved instanceof Element ? resolved : resolved.parentElement ?? editor.view.dom;
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    } catch {
       try {
-        const dom = editor.view.domAtPos(pos).node as Element;
-        if (dom) dom.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        editor.view.dispatch(editor.state.tr.scrollIntoView());
       } catch {
         editor.commands.focus();
       }
-    });
-  }
+    }
+  });
 }
 
 /**

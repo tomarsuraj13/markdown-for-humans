@@ -2553,7 +2553,7 @@
   background: transparent;
   border: none;
   border-radius: 6px;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   color: var(--md-foreground);
   transition: background-color 0.15s ease;
@@ -2621,12 +2621,41 @@
   min-width: 0;
 }
 
+.audit-issue-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .audit-issue-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 4px;
   width: 100%;
+}
+
+.audit-issue-nav-btn {
+  background: transparent;
+  border: 1px solid var(--md-border, rgba(128,128,128,0.4));
+  border-radius: 4px;
+  color: var(--md-muted);
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.audit-issue-nav-btn:hover {
+  background-color: var(--md-hover-bg);
+  color: var(--md-foreground);
+  border-color: var(--vscode-focusBorder);
 }
 
 /* Suggestion pills row */
@@ -2673,7 +2702,7 @@
   /* transition: background-color 0.15s, color 0.15s, border-color 0.15s; */
   align-self: flex-start;
 }
-.audit-overlay-item:focus {outline: 2px solid var(--vscode-focusBorder);outline-offset: -1px;background-color: var(--md-hover-bg);}
+
 
 .audit-browse-btn:hover:not(:disabled) {
   background-color: var(--md-hover-bg);
@@ -2900,4 +2929,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.audit-issue-separator{
+  border: none;
+  border-top: 1px solid var(--vscode-widget-border, #ccc);
+  margin: 10px 0;
 }
