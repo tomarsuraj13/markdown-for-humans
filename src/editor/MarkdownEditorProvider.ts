@@ -847,7 +847,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               hostname: parsed.hostname,
               path: parsed.pathname + parsed.search,
               port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-              timeout: 5000,
+              timeout: 2000,
             },
             (res: any) => {
               // Consider any 2xx or 3xx status code as reachable
