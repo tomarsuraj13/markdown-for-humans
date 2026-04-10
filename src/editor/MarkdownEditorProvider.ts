@@ -141,9 +141,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   // Remember last content sent from the webview so we can skip redundant updates
   private lastWebviewContent = new Map<string, string>();
   // --- Audit Search Tuning ---
-  // Minimum length required to attempt any file suggestions
+  /**
+   * Minimum length required to attempt ANY file suggestions.
+   * Rationale: Filenames under 3 characters (e.g., "a.png", "1.md") are too generic.
+   * Searching for them yields too many false positives and creates noisy, unhelpful UI suggestions.
+   */
   private readonly MIN_BASENAME_LENGTH_FOR_SUGGESTION = 3; 
-  // Minimum length required to trigger broad fuzzy searching (performance safeguard)
+  /**
+   * Minimum length required to trigger broad fuzzy searching (name.).
+   * Rationale: Glob fuzzy searches are highly CPU-intensive across large workspaces.
+   * Requiring at least 4 characters prevents UI freezes and massive memory spikes
+   * that would be caused by generating thousands of matches for short strings like "ab".
+   */
+
   private readonly MIN_BASENAME_LENGTH_FOR_FUZZY = 4;
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {

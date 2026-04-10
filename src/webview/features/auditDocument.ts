@@ -20,7 +20,10 @@ export interface AuditIssue {
 export interface FileCheckResult {
   exists: boolean;
   suggestions?: string[];
+  timedOut?: boolean;
 }
+
+export type UrlCheckResult = 'reachable' | 'unreachable' | 'timeout';
 
 function findBestMatches(target: string, candidates: string[], maxDistance: number = 3): string[] {
   const matches = candidates
@@ -119,8 +122,16 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
         );
       } else if (src.startsWith('http://') || src.startsWith('https://')) {
         fileChecks.push(
-          checkUrlStatus(src).then(ok => {
-            if (!ok) {
+          checkUrlStatus(src).then(status => {
+            if (status === 'timeout') {
+              issues.push({
+                type: 'image',
+                message: `Verification timed out for image: ${src}`,
+                pos,
+                nodeSize: node.nodeSize,
+                target: src,
+              });
+            } else if (status === 'unreachable') {
               issues.push({
                 type: 'image',
                 message: `Broken image URL: ${src}`,
@@ -155,7 +166,15 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
         ) {
           fileChecks.push(
             checkFileExistence(href).then(result => {
-              if (!result.exists) {
+              if (result.timedOut) {
+                issues.push({
+                  type: 'link',
+                  message: `Verification timed out for local File: ${href}`,
+                  pos,
+                  nodeSize: node.nodeSize,
+                  target: href,
+                });
+              } else if (!result.exists) {
                 issues.push({
                   type: 'link',
                   message: `Linked file not found: ${href}`,
@@ -169,8 +188,16 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
           );
         } else if (href.startsWith('http://') || href.startsWith('https://')) {
           fileChecks.push(
-            checkUrlStatus(href).then(ok => {
-              if (!ok) {
+            checkUrlStatus(href).then(status => {
+              if (status === 'timeout') {
+                issues.push({
+                  type: 'link',
+                  message: `Verification timed out for link: ${href}`,
+                  pos,
+                  nodeSize: node.nodeSize,
+                  target: href,
+                });
+              } else if (status === 'unreachable') {
                 issues.push({
                   type: 'link',
                   message: `Broken link URL: ${href}`,
@@ -249,13 +276,16 @@ export function requestFilePickerForIssue(fileType: AuditFileType): Promise<stri
     const requestId = `audit-pick-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     auditPickFileCallbacks.set(requestId, resolve);
 
-    // 30 second timeout – file picker is user-driven so it needs a longer window
+    // Safety-net timeout (5 minutes) to prevent memory leaks if the extension host crashes.
+    // We DO NOT use a short timeout here because OS file pickers are user-driven,
+    // and users may legitimately take several minutes to locate a specific file.
+    // Standard user cancellations are handled natively by the extension host returning null.
     setTimeout(() => {
       if (auditPickFileCallbacks.has(requestId)) {
         auditPickFileCallbacks.delete(requestId);
         resolve(null);
       }
-    }, 30000);
+    }, 300000);
 
     vscodeApi.postMessage({
       type: 'auditPickFile',
@@ -288,14 +318,18 @@ function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
       return;
     }
     const requestId = `audit-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    auditCheckCallbacks.set(requestId, resolve);
-
-    setTimeout(() => {
+   
+    const timeout = setTimeout(() => {
       if (auditCheckCallbacks.has(requestId)) {
         auditCheckCallbacks.delete(requestId);
-        resolve({ exists: false });
+        resolve({ exists: false, timedOut: true }); // <-- Explicitly mark as timed out
       }
     }, 2000);
+
+    auditCheckCallbacks.set(requestId, (result: FileCheckResult) => {
+      clearTimeout(timeout);
+      resolve({ ...result, timedOut: false });
+    });
 
     vscodeApi.postMessage({
       type: 'auditCheckFile',
@@ -305,40 +339,34 @@ function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
   });
 }
 
-function checkUrlStatus(url: string): Promise<boolean> {
+function checkUrlStatus(url: string): Promise<UrlCheckResult> {
   const vscodeApi = (window as any).vscode;
   if (!vscodeApi) {
-    // In the webview itself we cannot reliably inspect status due to CORS.
-    // Treat as unreachable to avoid false positives.
-    return Promise.resolve(false);
+    return Promise.resolve('unreachable');
   }
 
   return new Promise(resolve => {
     const requestId = `audit-url-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    auditUrlCheckCallbacks.set(requestId, resolve);
 
-    // Timeout fallback if extension host does not respond.
+    // Increased to 5 seconds. Network requests can naturally take a few seconds.
     const timeout = setTimeout(() => {
       if (auditUrlCheckCallbacks.has(requestId)) {
         auditUrlCheckCallbacks.delete(requestId);
-        resolve(false);
+        resolve('timeout'); // <-- Resolve as timeout instead of false
       }
-    }, 2000);
+    }, 2000); 
+
+    // Wrap the resolve to clear the timeout if it succeeds
+    auditUrlCheckCallbacks.set(requestId, (reachable: boolean) => {
+      clearTimeout(timeout);
+      resolve(reachable ? 'reachable' : 'unreachable');
+    });
 
     vscodeApi.postMessage({
       type: 'auditCheckUrl',
       requestId,
       url,
     });
-
-    // Ensure callback cleanup resets timer when called.
-    const originalCallback = auditUrlCheckCallbacks.get(requestId);
-    if (originalCallback) {
-      auditUrlCheckCallbacks.set(requestId, (reachable: boolean) => {
-        clearTimeout(timeout);
-        originalCallback(reachable);
-      });
-    }
   });
 }
 

@@ -466,6 +466,9 @@ function initializeEditor(initialContent: string) {
           HTMLAttributes: {
             class: 'markdown-image',
           },
+          // Inject the global setting here. 
+          // The extension will call this function whenever it needs to check the state.
+          getShowImageHoverOverlay: () => (window as any).showImageHoverOverlay,
         }),
         DocumentAuditExtension,
       ],

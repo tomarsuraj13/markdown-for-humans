@@ -106,6 +106,14 @@ export const CustomImage = Image.extend({
   // Since inline is true, images belong to 'inline' group
   group: 'inline',
 
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      // Define a getter function so it always fetches the freshest dynamic value
+      getShowImageHoverOverlay: () => true, 
+    };
+  },
+
   addProseMirrorPlugins() {
     return [
       // Disable default image paste handling to prevent double insertion
@@ -181,7 +189,7 @@ export const CustomImage = Image.extend({
   },
 
   addNodeView() {
-    return ({ node, HTMLAttributes, editor }) => {
+    return ({ node, HTMLAttributes, editor, extension }) => {
       // Create wrapper to hold image and resize icon
       const wrapper = document.createElement('span');
       wrapper.className = 'image-wrapper';
@@ -285,7 +293,7 @@ export const CustomImage = Image.extend({
           isImageLoaded &&
           dom.complete &&
           !isExternal &&
-          (window as any).showImageHoverOverlay !== false
+          extension.options.getShowImageHoverOverlay() !== false
         ) {
           wrapper.classList.add('image-hover-active');
           // Show metadata footer
@@ -306,7 +314,7 @@ export const CustomImage = Image.extend({
         if (relatedTarget && wrapper.contains(relatedTarget)) {
           return;
         }
-        if ((window as any).showImageHoverOverlay !== false) {
+        if (extension.options.getShowImageHoverOverlay() !== false) {
           wrapper.classList.remove('image-hover-active');
           // Hide metadata footer
           hideImageMetadataFooter(wrapper);

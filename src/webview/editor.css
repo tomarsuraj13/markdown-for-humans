@@ -2941,3 +2941,17 @@ body {
 body.saving-feedback {
   opacity: 0.7; 
 }
+
+.audit-fix-button.manual-fix {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.audit-fix-button.manual-fix:hover {
+  background: var(--vscode-button-hoverBackground);
+}

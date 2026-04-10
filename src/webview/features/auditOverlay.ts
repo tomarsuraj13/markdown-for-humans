@@ -285,9 +285,6 @@ function buildIssueItem(issue: AuditIssue): HTMLElement {
     fixBtn.textContent = 'Fix';
     fixBtn.setAttribute('data-pos', String(issue.pos));
     fixBtn.setAttribute('data-type', issue.type);
-    fixBtn.style.cssText =
-      'background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;padding:4px 8px;cursor:pointer;border-radius:2px;flex-shrink:0;';
-
     const browseBtn = buildBrowseButton(issue.type === 'image' ? 'image' : 'any');
 
     inputRow.appendChild(input);
