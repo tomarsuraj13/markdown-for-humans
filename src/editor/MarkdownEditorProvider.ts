@@ -140,6 +140,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   private pendingEdits = new Map<string, number>();
   // Remember last content sent from the webview so we can skip redundant updates
   private lastWebviewContent = new Map<string, string>();
+  // --- Audit Search Tuning ---
+  // Minimum length required to attempt any file suggestions
+  private readonly MIN_BASENAME_LENGTH_FOR_SUGGESTION = 3; 
+  // Minimum length required to trigger broad fuzzy searching (performance safeguard)
+  private readonly MIN_BASENAME_LENGTH_FOR_FUZZY = 4;
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new MarkdownEditorProvider(context);
@@ -645,8 +650,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         const basename = path.basename(normalizedPath, path.extname(normalizedPath));
         const extension = path.extname(normalizedPath).toLowerCase();
 
-        if (basename.length > 2) {
-          console.log('[MD4H] Searching for suggestions for basename:', basename, 'extension:', extension);
+        if (basename.length >= this.MIN_BASENAME_LENGTH_FOR_SUGGESTION) {
 
           const searchExclude = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.next/**}';
           const exactPattern = workspaceFolder
@@ -655,7 +659,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const fuzzyPattern = workspaceFolder
             ? new vscode.RelativePattern(workspaceFolder, `**/*${basename}*.*`)
             : `**/*${basename}*.*`;
-          const shouldRunFuzzySearch = basename.length >= 4;
+          const shouldRunFuzzySearch = basename.length >= this.MIN_BASENAME_LENGTH_FOR_FUZZY;
           const extensionPattern =
             extension && workspaceFolder
               ? new vscode.RelativePattern(workspaceFolder, `**/*${extension}`)
@@ -822,41 +826,35 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     try {
-      let reachable = false;
-
-      if (typeof globalThis.fetch === 'function') {
-        const res = await globalThis.fetch(url, { method: 'HEAD' });
-        const status = typeof (res as any).status === 'number' ? (res as any).status : 0;
-        reachable = status >= 200 && status < 400;
-      } else {
-        // Node.js fallback using https/http built-in module
-        reachable = await new Promise<boolean>(resolve => {
-          try {
-            const parsed = new URL(url);
-            const httpModule = parsed.protocol === 'https:' ? require('https') : require('http');
-            const req = httpModule.request(
-              {
-                method: 'HEAD',
-                hostname: parsed.hostname,
-                path: parsed.pathname + parsed.search,
-                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-                timeout: 5000,
-              },
-              (res: any) => {
-                resolve(res.statusCode >= 200 && res.statusCode < 400);
-              }
-            );
-            req.on('error', () => resolve(false));
-            req.on('timeout', () => {
-              req.abort();
-              resolve(false);
-            });
-            req.end();
-          } catch {
+      // Use Node's native http/https modules for guaranteed cross-version consistency
+      const reachable = await new Promise<boolean>(resolve => {
+        try {
+          const parsed = new URL(url);
+          const httpModule = parsed.protocol === 'https:' ? require('https') : require('http');
+          const req = httpModule.request(
+            {
+              method: 'HEAD',
+              hostname: parsed.hostname,
+              path: parsed.pathname + parsed.search,
+              port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+              timeout: 5000,
+            },
+            (res: any) => {
+              // Consider any 2xx or 3xx status code as reachable
+              resolve(res.statusCode >= 200 && res.statusCode < 400);
+            }
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => {
+            req.abort();
             resolve(false);
-          }
-        });
-      }
+          });
+          req.end();
+        } catch {
+          // Fails on invalid URLs
+          resolve(false);
+        }
+      });
 
       webview.postMessage({
         type: 'auditCheckUrlResult',

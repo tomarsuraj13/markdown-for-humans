@@ -623,7 +623,7 @@ export function createFormattingToolbar(editor: Editor): HTMLElement {
       action: () => {
         window.dispatchEvent(new CustomEvent('auditDocument'));
       },
-      isActive: () => false,
+      isActive: () => document.getElementById('audit-overlay')?.classList.contains('visible') || false,
       className: 'audit-button',
     },
     {

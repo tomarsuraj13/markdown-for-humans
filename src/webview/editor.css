@@ -2463,7 +2463,6 @@
 
 .validation-error-highlight {
   text-decoration: underline wavy var(--vscode-editorError-foreground, red);
-  background-color: var(--error-highlight-color, rgba(255, 0, 0, 0.1));
   border-radius: 2px;
   transition: background-color 0.3s ease;
 }
@@ -2493,14 +2492,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--vscode-editor-background);
+  background-color: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   opacity: 0.9;
   backdrop-filter: blur(2px);
 }
 .audit-overlay-panel {
   position: relative;
   z-index: 1;
-  background-color: var(--vscode-editor-background);
+  background-color: var(--vscode-editorWidget-background);
   border: 1px solid var(--md-border);
   border-radius: 12px;
   box-shadow: 0 8px 32px var(--vscode-widget-shadow);
@@ -2638,13 +2637,12 @@
 
 .audit-issue-nav-btn {
   background: transparent;
-  border: 1px solid var(--md-border, rgba(128,128,128,0.4));
+  border: 1px solid var(--vscode-editorWidget-border, var(--md-border));
   border-radius: 4px;
   color: var(--md-muted);
   width: 22px;
   height: 22px;
   line-height: 1;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -2666,7 +2664,7 @@
 }
 
 .audit-suggestion-pill {
-  background-color: var(--md-subtle-bg, rgba(128,128,128,0.1));
+  background-color: var(--vscode-input-background, var(--md-subtle-bg));
   border: 1px solid var(--vscode-focusBorder);
   border-radius: 12px;
   color: var(--vscode-editor-foreground);
@@ -2693,7 +2691,7 @@
 /* Browse button */
 .audit-browse-btn {
   background: transparent;
-  border: 1px dashed var(--md-border, rgba(128,128,128,0.4));
+  border: 1px dashed var(--vscode-editorWidget-border, var(--md-border));
   border-radius: 4px;
   color: var(--md-muted);
   font-size: 0.82em;
@@ -2838,8 +2836,7 @@
 }
 
 .audit-preview-card {
-  background-color: rgba(31, 35, 41, 0.96);
-  border: 1px solid var(--md-border);
+  background-color: var(--vscode-editorWidget-background);
   border-radius: 14px;
   box-shadow: 0 14px 60px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(18px);
@@ -2935,4 +2932,12 @@
   border: none;
   border-top: 1px solid var(--vscode-widget-border, #ccc);
   margin: 10px 0;
+}
+
+body {
+  transition: opacity 0.15s ease-in-out;
+}
+
+body.saving-feedback {
+  opacity: 0.7; 
 }

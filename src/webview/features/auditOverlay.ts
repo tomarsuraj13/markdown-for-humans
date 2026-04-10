@@ -48,14 +48,14 @@ export function showToast(message: string, type: 'success' | 'info' | 'loading' 
   toast.setAttribute('aria-live', 'polite');
 
   const iconMap = {
-    success: '✓',
-    info: 'ℹ',
-    loading: '⏳',
+    success: 'codicon-verified',
+    info: 'codicon-info',
+    loading: 'codicon-loading codicon-modifier-spin',
   };
   const icon = iconMap[type];
 
   toast.innerHTML = `
-    <span class="toast-icon">${icon}</span>
+    <span class="toast-icon codicon ${icon}" aria-hidden="true"></span>
     <span class="toast-message">${message}</span>
   `;
 
@@ -195,7 +195,11 @@ function buildIssueItem(issue: AuditIssue): HTMLElement {
   // Icon column
   const typeEl = document.createElement('div');
   typeEl.className = `audit-issue-type ${issue.type}`;
-  typeEl.textContent = issue.type === 'link' ? '🔗' : issue.type === 'image' ? '🖼️' : '📑';
+  typeEl.innerHTML = issue.type === 'link'
+    ? '<span class="codicon codicon-link" aria-hidden="true"></span>'
+    : issue.type === 'image'
+    ? '<span class="codicon codicon-file-media" aria-hidden="true"></span>'
+    : '<span class="codicon codicon-book" aria-hidden="true"></span>';
 
   // Text column
   const textEl = document.createElement('div');
@@ -519,7 +523,7 @@ function buildBrowseButton(fileType: AuditFileType): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.className = 'audit-browse-btn';
   btn.setAttribute('data-file-type', fileType);
-  btn.textContent = '📁 Browse…';
+  btn.innerHTML = '<span class="codicon codicon-folder" aria-hidden="true"></span> Browse…';
   btn.title = 'Open file picker to select the correct file';
   return btn;
 }
@@ -573,13 +577,16 @@ function wireItemHandlers(
   }
 
   // Browse button → open VS Code file picker, then apply selected path
+  // Browse button → open VS Code file picker, then apply selected path
   const browseBtn = item.querySelector('.audit-browse-btn') as HTMLButtonElement | null;
   if (browseBtn) {
     browseBtn.addEventListener('click', async (e: Event) => {
       e.stopPropagation();
       const fileType = (browseBtn.getAttribute('data-file-type') ?? 'any') as AuditFileType;
       browseBtn.disabled = true;
-      browseBtn.textContent = '⏳ Waiting…';
+      
+      // Update wait state
+      browseBtn.innerHTML = '<span class="codicon codicon-clock" aria-hidden="true"></span> Waiting…';
 
       try {
         const selected = await requestFilePickerForIssue(fileType);
@@ -588,13 +595,14 @@ function wireItemHandlers(
           const typeStr = item.getAttribute('data-type');
           applyFix(pos, typeStr, selected, item, allIssues, editor, overlay);
         } else {
-          // User cancelled – restore button
+          // User cancelled – restore button with folder icon
           browseBtn.disabled = false;
-          browseBtn.textContent = '📁 Browse…';
+          browseBtn.innerHTML = '<span class="codicon codicon-folder" aria-hidden="true"></span> Browse…';
         }
       } catch {
+        // Error – restore button with folder icon
         browseBtn.disabled = false;
-        browseBtn.textContent = '📁 Browse…';
+        browseBtn.innerHTML = '<span class="codicon codicon-folder" aria-hidden="true"></span> Browse…';
       }
     });
   }

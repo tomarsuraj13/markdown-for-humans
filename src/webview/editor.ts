@@ -625,16 +625,16 @@ function initializeEditor(initialContent: string) {
       const isMod = e.metaKey || e.ctrlKey; // Cmd on Mac, Ctrl on Windows/Linux
 
       // Save shortcut - immediate save
+      // Save shortcut - immediate save
       if (isMod && e.key === 's') {
         e.preventDefault();
         e.stopPropagation();
         immediateUpdate();
 
-        // Visual feedback - flash the document briefly
-        document.body.style.opacity = '0.7';
+        document.body.classList.add('saving-feedback');
         setTimeout(() => {
-          document.body.style.opacity = '1';
-        }, 100);
+          document.body.classList.remove('saving-feedback');
+        }, 150);
 
         return;
       }
