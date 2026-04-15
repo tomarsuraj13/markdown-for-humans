@@ -959,38 +959,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
 
-      // Use Node's native http/https modules for guaranteed cross-version consistency
-      const reachable = await new Promise<boolean>(resolve => {
-        try {
-          const httpModule = parsed.protocol === 'https:' ? https : http;
-          const req = httpModule.request(
-            {
-              method: 'HEAD',
-              hostname: safeAddress,
-              headers: {
-                Host: parsed.host,
-              },
-              servername: parsed.hostname,
-              path: parsed.pathname + parsed.search,
-              port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-              timeout: MarkdownEditorProvider.URL_CHECK_TIMEOUT_MS,
-            },
-            (res: any) => {
-              // Consider any 2xx or 3xx status code as reachable
-              resolve(res.statusCode >= 200 && res.statusCode < 400);
-            }
-          );
-          req.on('error', () => resolve(false));
-          req.on('timeout', () => {
-            req.destroy();
-            resolve(false);
-          });
-          req.end();
-        } catch {
-          // Fails on invalid URLs
-          resolve(false);
-        }
-      });
+      // Use Node's native http/https modules for guaranteed cross-version consistency.
+      // Try HEAD first; fall back to GET if the server rejects HEAD (405/403/404).
+      const requestOpts = {
+        hostname: safeAddress,
+        headers: {
+          Host: parsed.host,
+          'User-Agent': 'MarkdownForHumans-LinkChecker/1.0',
+        } as Record<string, string>,
+        servername: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        timeout: MarkdownEditorProvider.URL_CHECK_TIMEOUT_MS,
+      };
+      const httpModule = parsed.protocol === 'https:' ? https : http;
+
+      const tryRequest = (method: string): Promise<number> =>
+        new Promise<number>(resolve => {
+          try {
+            const req = httpModule.request(
+              { ...requestOpts, method },
+              (res: any) => {
+                // Consume body so the socket is released
+                res.resume();
+                resolve(res.statusCode as number);
+              }
+            );
+            req.on('error', () => resolve(0));
+            req.on('timeout', () => {
+              req.destroy();
+              resolve(0);
+            });
+            req.end();
+          } catch {
+            resolve(0);
+          }
+        });
+
+      let status = await tryRequest('HEAD');
+
+      // Many servers block HEAD or return misleading codes; retry with GET
+      if (status === 403 || status === 404 || status === 405) {
+        status = await tryRequest('GET');
+      }
+
+      const reachable = status >= 200 && status < 400;
 
       webview.postMessage({
         type: 'auditCheckUrlResult',
