@@ -1320,8 +1320,8 @@
 
   .drag-block-handle {
     position: fixed;
-    width: 20px;
-    height: 20px;
+    width: 28px;
+    height: 32px;
     display: none; /* shown by JS on hover */
     align-items: center;
     justify-content: center;

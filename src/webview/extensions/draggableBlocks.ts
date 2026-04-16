@@ -211,6 +211,8 @@ class DragHandleController {
   private readonly _onDragOver: (e: DragEvent) => void;
   private readonly _onDrop: (e: DragEvent) => void;
   private readonly _onDragEnd: (e: DragEvent) => void;
+  private readonly _onHandleMouseEnter: (e: MouseEvent) => void;
+  private readonly _onHandleMouseLeave: (e: MouseEvent) => void;
 
   constructor(_editor: Editor, view: EditorView) {
     this.view = view;
@@ -244,35 +246,16 @@ class DragHandleController {
     this._onDragOver = this.onDragOver.bind(this);
     this._onDrop = this.onDrop.bind(this);
     this._onDragEnd = this.onDragEnd.bind(this);
+    this._onHandleMouseEnter = this.onHandleMouseEnter.bind(this);
+    this._onHandleMouseLeave = this.onHandleMouseLeave.bind(this);
 
     // Mouse tracking: on the editor DOM so we can resolve ProseMirror positions
     view.dom.addEventListener('mousemove', this._onMouseMove);
     view.dom.addEventListener('mouseleave', this._onMouseLeave);
 
     // Keep handle alive when mouse is over it
-    this.handle.addEventListener('mouseenter', () => {
-      // Cancel any pending deferred hide (mouse crossed the gap successfully).
-      if (this._hideTimeoutId !== null) {
-        clearTimeout(this._hideTimeoutId);
-        this._hideTimeoutId = null;
-      }
-      // If the gap crossing cleared hoveredBlock, restore it from the persisted
-      // _handleBlock so dragstart still has the correct block reference.
-      if (!this.hoveredBlock && this._handleBlock) {
-        this.hoveredBlock = this._handleBlock;
-      }
-    });
-    this.handle.addEventListener('mouseleave', (e: MouseEvent) => {
-      if (this.isDragging) return;
-      // Mouse button is held → a drag is being initiated. Don't hide: dragstart
-      // will fire momentarily and needs hoveredBlock to be intact.
-      if (e.buttons !== 0) return;
-      // If moving back to editor, don't hide
-      if (e.relatedTarget instanceof Node && this.view.dom.contains(e.relatedTarget)) {
-        return;
-      }
-      this.hideHandle();
-    });
+    this.handle.addEventListener('mouseenter', this._onHandleMouseEnter);
+    this.handle.addEventListener('mouseleave', this._onHandleMouseLeave);
 
     // Drag start: on the handle itself
     this.handle.addEventListener('dragstart', this._onDragStart);
@@ -325,7 +308,34 @@ class DragHandleController {
     this._hideTimeoutId = setTimeout(() => {
       this._hideTimeoutId = null;
       if (!this.isDragging) this.hideHandle();
-    }, 100);
+    }, 150);
+  }
+
+  // Add these alongside your other event handler methods (e.g., below onMouseLeave)
+  
+  private onHandleMouseEnter(e: MouseEvent): void {
+    // Cancel any pending deferred hide (mouse crossed the gap successfully).
+    if (this._hideTimeoutId !== null) {
+      clearTimeout(this._hideTimeoutId);
+      this._hideTimeoutId = null;
+    }
+    // If the gap crossing cleared hoveredBlock, restore it from the persisted
+    // _handleBlock so dragstart still has the correct block reference.
+    if (!this.hoveredBlock && this._handleBlock) {
+      this.hoveredBlock = this._handleBlock;
+    }
+  }
+
+  private onHandleMouseLeave(e: MouseEvent): void {
+    if (this.isDragging) return;
+    // Mouse button is held → a drag is being initiated. Don't hide: dragstart
+    // will fire momentarily and needs hoveredBlock to be intact.
+    if (e.buttons !== 0) return;
+    // If moving back to editor, don't hide
+    if (e.relatedTarget instanceof Node && this.view.dom.contains(e.relatedTarget)) {
+      return;
+    }
+    this.hideHandle();
   }
 
   /**
@@ -345,12 +355,13 @@ class DragHandleController {
       editorRect.bottom
     );
 
-    const HANDLE_W = 20;
-    const GAP      = 8; // gap between handle right edge and content left edge
+    const HANDLE_W = 28;
+    const HANDLE_H = 32;
+    const GAP      = 4; // gap between handle right edge and content left edge
 
     // fixed coordinates
     const left = editorRect.left - GAP - HANDLE_W;
-    const top  = centreY - HANDLE_W / 2;  // 10px above centre (handle height ~20px)
+    const top  = centreY - HANDLE_H / 2;
 
     this.handle.style.left    = `${left}px`;
     this.handle.style.top     = `${top}px`;
@@ -517,7 +528,7 @@ class DragHandleController {
         // 3. DELETE: Safely remove the original block using its newly mapped position.
         tr.delete(mappedDragPos, mappedDragPos + draggedSize);
 
-        this.view.dispatch(tr.scrollIntoView());
+        this.view.dispatch(tr);
       }
     }
 
