@@ -27,6 +27,7 @@ import { MarkdownParagraph } from './extensions/markdownParagraph';
 import { OrderedListMarkdownFix } from './extensions/orderedListMarkdownFix';
 import { HtmlPreservingTable } from './extensions/htmlPreservingTable';
 import { DocumentAuditExtension } from './features/auditDocument';
+import { DraggableBlocks } from './extensions/draggableBlocks';
 import { createFormattingToolbar, createTableMenu, updateToolbarStates } from './BubbleMenuView';
 import { getEditorMarkdownForSync } from './utils/markdownSerialization';
 import {
@@ -480,6 +481,7 @@ function initializeEditor(initialContent: string) {
           getShowImageHoverOverlay: () => (window as any).showImageHoverOverlay,
         } as any),
         DocumentAuditExtension,
+        DraggableBlocks,
       ],
       // Don't pass content here - we'll set it after init with contentType: 'markdown'
       editorProps: {
