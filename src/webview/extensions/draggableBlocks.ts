@@ -86,7 +86,7 @@ const BLOCK_TYPES = new Set([
 ]);
 
 /** Node types where dropping is forbidden (dropping inside them is invalid). */
-const FORBIDDEN_DROP_TYPES = new Set(['codeBlock', 'mathBlock']);
+// const FORBIDDEN_DROP_TYPES = new Set(['codeBlock', 'mathBlock']);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -111,14 +111,14 @@ function topLevelBlockAt(
 }
 
 /** Check if `pos` sits inside a node type that forbids drops. */
-function isInsideForbiddenNode(view: EditorView, pos: number): boolean {
-  if (pos < 0 || pos >= view.state.doc.content.size) return false;
-  const $pos = view.state.doc.resolve(pos);
-  for (let d = $pos.depth; d >= 1; d--) {
-    if (FORBIDDEN_DROP_TYPES.has($pos.node(d).type.name)) return true;
-  }
-  return false;
-}
+// function isInsideForbiddenNode(view: EditorView, pos: number): boolean {
+//   if (pos < 0 || pos >= view.state.doc.content.size) return false;
+//   const $pos = view.state.doc.resolve(pos);
+//   for (let d = $pos.depth; d >= 1; d--) {
+//     if (FORBIDDEN_DROP_TYPES.has($pos.node(d).type.name)) return true;
+//   }
+//   return false;
+// }
 
 /**
  * Given a clientY, compute the best insert position (before/after a block)
@@ -130,19 +130,34 @@ function computeDropTarget(
   clientY: number,
   draggedPos: number
 ): { insertPos: number; valid: boolean } {
-  const coords = view.posAtCoords({ left: clientX, top: clientY });
-  if (!coords) return { insertPos: draggedPos, valid: false };
+  const editorRect = view.dom.getBoundingClientRect();
+
+  let coords = view.posAtCoords({ left: clientX, top: clientY });
+
+  if (!coords) {
+    if (clientY <= editorRect.top) {
+      return { insertPos: 0, valid: true };
+    }
+    if (clientY >= editorRect.bottom) {
+      return { insertPos: view.state.doc.content.size, valid: true };
+    }
+    coords = view.posAtCoords({ left: editorRect.left + editorRect.width / 2, top: clientY });
+    if (!coords) return { insertPos: draggedPos, valid: false };
+  }
 
   const { pos } = coords;
 
-  if (isInsideForbiddenNode(view, pos)) {
-    return { insertPos: -1, valid: false };
-  }
+  // if (isInsideForbiddenNode(view, pos)) {
+  //   return { insertPos: -1, valid: false };
+  // }
 
   const block = topLevelBlockAt(view, pos);
-  if (!block) return { insertPos: pos, valid: true };
+  
+  if (!block) {
+    const isTopHalf = clientY < editorRect.top + editorRect.height / 2;
+    return { insertPos: isTopHalf ? 0 : view.state.doc.content.size, valid: true };
+  }
 
-  // Snap to before or after this block depending on which half the mouse is in
   const domNode = view.nodeDOM(block.pos) as HTMLElement | null;
   if (!domNode) return { insertPos: block.pos, valid: true };
 
@@ -186,6 +201,8 @@ class DragHandleController {
   private dropInsertPos = -1;
   private dropValid = true;
   private scrollRafId: number | null = null;
+  /** Current auto-scroll speed (read by the rAF loop so speed updates live). */
+  private _autoScrollSpeed = 0;
 
   // Bound listeners (kept for cleanup)
   private readonly _onMouseMove: (e: MouseEvent) => void;
@@ -203,7 +220,7 @@ class DragHandleController {
     this.handle.className = 'drag-block-handle';
     this.handle.setAttribute('draggable', 'true');
     this.handle.setAttribute('aria-label', 'Drag to reorder block');
-    this.handle.setAttribute('title', 'Drag to reorder  •  Alt+↑/↓ to move with keyboard');
+    this.handle.setAttribute('title', 'Drag to reorder block');
     // Two columns × three rows of dots = 6 dots. viewBox: 14×20 px.
     this.handle.innerHTML = `<svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor" aria-hidden="true" style="pointer-events: none;">
       <circle cx="3" cy="3"  r="1.8"/>
@@ -436,10 +453,18 @@ class DragHandleController {
       speed = Math.round(AUTO_SCROLL_MAX_SPEED * (1 - distBottom / AUTO_SCROLL_THRESHOLD));
     }
 
+    // Write speed to instance field so the rAF loop always reads the latest
+    // value (instead of capturing a stale closure value on first start).
+    this._autoScrollSpeed = speed;
+
     if (speed !== 0) {
       if (this.scrollRafId === null) {
         const scroll = () => {
-          document.documentElement.scrollTop += speed;
+          if (this._autoScrollSpeed === 0) {
+            this.scrollRafId = null;
+            return;
+          }
+          window.scrollBy(0, this._autoScrollSpeed);
           this.scrollRafId = requestAnimationFrame(scroll);
         };
         this.scrollRafId = requestAnimationFrame(scroll);
@@ -471,21 +496,27 @@ class DragHandleController {
     const draggedNode = state.doc.resolve(this.draggedPos).nodeAfter;
 
     if (draggedNode && this.dropInsertPos !== -1 && this.dropValid) {
-      const draggedSize     = draggedNode.nodeSize;
-      const rawInsert       = this.dropInsertPos;
+      const draggedSize = draggedNode.nodeSize;
 
-      // If the target is after the dragged block, subtract the block size
-      // (because deleting the block shifts everything after it left by draggedSize)
-      const adjustedInsert = rawInsert > this.draggedPos
-        ? rawInsert - draggedSize
-        : rawInsert;
-
-      // Only dispatch if the block actually moves
-      if (adjustedInsert !== this.draggedPos) {
-        const tr      = state.tr;
+      // Prevent unnecessary transactions if dropping in the exact same place
+      if (
+        this.dropInsertPos !== this.draggedPos && 
+        this.dropInsertPos !== this.draggedPos + draggedSize
+      ) {
+        const tr = state.tr;
         const content = state.doc.slice(this.draggedPos, this.draggedPos + draggedSize);
-        tr.delete(this.draggedPos, this.draggedPos + draggedSize);
-        tr.insert(adjustedInsert, content.content);
+
+        // 1. INSERT FIRST: This guarantees the document never temporarily shrinks
+        // into an invalid schema state (which would ruin our coordinates).
+        tr.insert(this.dropInsertPos, content.content);
+
+        // 2. MAP: Let ProseMirror calculate where our original block moved to
+        // as a result of the insertion we just made above it.
+        const mappedDragPos = tr.mapping.map(this.draggedPos);
+
+        // 3. DELETE: Safely remove the original block using its newly mapped position.
+        tr.delete(mappedDragPos, mappedDragPos + draggedSize);
+
         this.view.dispatch(tr.scrollIntoView());
       }
     }
