@@ -2540,15 +2540,18 @@
 .audit-overlay-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 8px;
 }
 .audit-overlay-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   width: 100%;
-  padding: 9px 24px;
+  padding: 9px 16px;
   margin: 1px 0;
+  box-sizing: border-box;
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -2565,6 +2568,7 @@
 }
 .audit-issue-message {
   font-weight: 500;
+  white-space: normal;
 }
 .audit-issue-target {
   font-size: 0.85em;
@@ -2618,6 +2622,7 @@
 .audit-issue-text {
   flex: 1;
   min-width: 0;
+  word-break: break-word;
 }
 
 .audit-issue-header {
