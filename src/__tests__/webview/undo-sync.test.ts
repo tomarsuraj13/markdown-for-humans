@@ -10,12 +10,23 @@ jest.mock('@tiptap/core', () => ({
   Editor: jest.fn(),
   Extension: { create: (config: unknown) => config },
 }));
+jest.mock('@tiptap/pm/state', () => ({
+  Plugin: class {},
+  PluginKey: class {},
+}));
+jest.mock('@tiptap/pm/view', () => ({
+  Decoration: { inline: jest.fn() },
+  DecorationSet: { create: jest.fn(), empty: {} },
+}));
 jest.mock('@tiptap/starter-kit', () => ({ __esModule: true, default: { configure: () => ({}) } }));
 jest.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }));
 jest.mock('lowlight', () => ({ __esModule: true, lowlight: { registerLanguage: jest.fn() } }));
 jest.mock('@tiptap/extension-table', () => ({
   __esModule: true,
-  TableKit: { configure: () => ({}) },
+  Table: { extend: () => ({ configure: () => ({}) }) },
+  TableRow: {},
+  TableHeader: {},
+  TableCell: {},
 }));
 jest.mock('@tiptap/extension-list', () => ({
   __esModule: true,
@@ -37,7 +48,7 @@ jest.mock('./../../webview/extensions/mermaid', () => ({ Mermaid: {} }));
 jest.mock('./../../webview/extensions/tabIndentation', () => ({ TabIndentation: {} }));
 jest.mock('./../../webview/extensions/imageEnterSpacing', () => ({ ImageEnterSpacing: {} }));
 jest.mock('./../../webview/extensions/markdownParagraph', () => ({ MarkdownParagraph: {} }));
-jest.mock('./../../webview/extensions/githubAlerts', () => ({ GitHubAlert: {} }));
+jest.mock('./../../webview/extensions/githubAlerts', () => ({ GitHubAlerts: {} }));
 jest.mock('./../../webview/BubbleMenuView', () => ({
   createFormattingToolbar: () => ({}),
   createTableMenu: () => ({}),
@@ -56,6 +67,7 @@ jest.mock('./../../webview/utils/exportContent', () => ({
 }));
 jest.mock('./../../webview/utils/pasteHandler', () => ({
   processPasteContent: jest.fn(() => ({ isImage: false, wasConverted: false, content: '' })),
+  parseFencedCode: jest.fn(() => null),
 }));
 jest.mock('./../../webview/utils/copyMarkdown', () => ({ copySelectionAsMarkdown: jest.fn() }));
 jest.mock('./../../webview/utils/outline', () => ({ buildOutlineFromEditor: jest.fn(() => []) }));
@@ -66,6 +78,8 @@ type TestingModule = {
   setMockEditor: (editor: unknown) => void;
   trackSentContentForTests: (content: string) => void;
   updateEditorContentForTests: (content: string) => void;
+  isCodeContextForPasteForTests: (event: ClipboardEvent) => boolean;
+  insertRawCodeTextForTests: (text: string) => void;
 };
 
 describe('webview undo/redo guards', () => {
@@ -166,5 +180,39 @@ describe('webview undo/redo guards', () => {
       contentType: 'markdown',
     });
     expect(mockEditor.commands.setTextSelection).toHaveBeenCalledWith({ from: 2, to: 4 });
+  });
+
+  it('detects code context paste when selection is a codeBlock node', () => {
+    const mockEditor = {
+      isActive: jest.fn(() => false),
+      state: {
+        selection: {
+          node: { type: { name: 'codeBlock' } },
+        },
+      },
+    };
+
+    testing.setMockEditor(mockEditor);
+
+    const fakeEvent = { target: null } as unknown as ClipboardEvent;
+    expect(testing.isCodeContextForPasteForTests(fakeEvent)).toBe(true);
+  });
+
+  it('inserts pasted code as plain text node (no HTML parsing)', () => {
+    const insertContent = jest.fn();
+    const mockEditor = {
+      commands: {
+        insertContent,
+      },
+    };
+
+    testing.setMockEditor(mockEditor);
+
+    testing.insertRawCodeTextForTests('<table class="sq-table"><tr><td>Alice</td></tr></table>');
+
+    expect(insertContent).toHaveBeenCalledWith({
+      type: 'text',
+      text: '<table class="sq-table"><tr><td>Alice</td></tr></table>',
+    });
   });
 });

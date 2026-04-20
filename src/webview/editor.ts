@@ -11,7 +11,7 @@ import './codicon.css';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
-import { TableKit } from '@tiptap/extension-table';
+import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { ListKit } from '@tiptap/extension-list';
 import Link from '@tiptap/extension-link';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -25,6 +25,8 @@ import { GitHubAlerts } from './extensions/githubAlerts';
 import { ImageEnterSpacing } from './extensions/imageEnterSpacing';
 import { MarkdownParagraph } from './extensions/markdownParagraph';
 import { OrderedListMarkdownFix } from './extensions/orderedListMarkdownFix';
+import { HtmlPreservingTable } from './extensions/htmlPreservingTable';
+import { DocumentAuditExtension } from './features/auditDocument';
 import { createFormattingToolbar, createTableMenu, updateToolbarStates } from './BubbleMenuView';
 import { getEditorMarkdownForSync } from './utils/markdownSerialization';
 import {
@@ -113,6 +115,12 @@ type VsCodeApi = {
 
 declare const acquireVsCodeApi: () => VsCodeApi;
 
+// Message type for communication between extension and webview
+interface WebviewMessage {
+  type: string;
+  [key: string]: any;
+}
+
 // Extended window interface for MD4H globals
 declare global {
   interface Window {
@@ -153,6 +161,12 @@ let outlineUpdateTimeout: number | null = null;
 let lastSentContentHash: string | null = null;
 let lastSentTimestamp = 0;
 
+// Performance and Sync constants (m3)
+const DEBOUNCE_SYNC_MS = 500;
+const SYNC_ECHO_TIMEOUT_MS = 2000;
+const RECENT_EDIT_THRESHOLD_MS = 2000;
+const OUTLINE_UPDATE_DEBOUNCE_MS = 250;
+
 /**
  * Simple hash function (djb2 algorithm) for content deduplication
  */
@@ -188,13 +202,11 @@ const pushOutlineUpdate = () => {
 };
 
 const scheduleOutlineUpdate = () => {
-  if (outlineUpdateTimeout) {
-    clearTimeout(outlineUpdateTimeout);
-  }
+  if (outlineUpdateTimeout) window.clearTimeout(outlineUpdateTimeout);
   outlineUpdateTimeout = window.setTimeout(() => {
     pushOutlineUpdate();
     outlineUpdateTimeout = null;
-  }, 250);
+  }, OUTLINE_UPDATE_DEBOUNCE_MS);
 };
 
 // Global function for resolving image paths (used by CustomImage extension)
@@ -317,10 +329,7 @@ function immediateUpdate() {
  * Prevents sync while images are being saved to avoid race conditions
  */
 function debouncedUpdate(markdown: string) {
-  if (updateTimeout) {
-    clearTimeout(updateTimeout);
-  }
-
+  if (updateTimeout) window.clearTimeout(updateTimeout);
   updateTimeout = window.setTimeout(() => {
     try {
       // Check if any images are currently being saved
@@ -342,7 +351,7 @@ function debouncedUpdate(markdown: string) {
     } catch (error) {
       console.error('[MD4H] Error sending update:', error);
     }
-  }, 500);
+  }, DEBOUNCE_SYNC_MS);
 }
 
 // TODO: Re-implement code block language badges feature
@@ -436,14 +445,15 @@ function initializeEditor(initialContent: string) {
             breaks: true, // Preserve single newlines as <br>
           },
         }),
-        TableKit.configure({
-          table: {
-            resizable: true,
-            HTMLAttributes: {
-              class: 'markdown-table',
-            },
+        HtmlPreservingTable.configure({
+          resizable: true,
+          HTMLAttributes: {
+            class: 'markdown-table',
           },
         }),
+        TableRow,
+        TableHeader,
+        TableCell,
         ListKit.configure({
           orderedList: false,
           taskItem: {
@@ -460,12 +470,16 @@ function initializeEditor(initialContent: string) {
           },
           shouldAutoLink,
         }),
-        CustomImage.configure({
+        (CustomImage as any).configure({
           allowBase64: true, // Allow base64 for preview
           HTMLAttributes: {
             class: 'markdown-image',
           },
-        }),
+          // Inject the global setting here.
+          // The extension will call this function whenever it needs to check the state.
+          getShowImageHoverOverlay: () => (window as any).showImageHoverOverlay,
+        } as any),
+        DocumentAuditExtension,
       ],
       // Don't pass content here - we'll set it after init with contentType: 'markdown'
       editorProps: {
@@ -616,26 +630,23 @@ function initializeEditor(initialContent: string) {
     };
 
     // Handle keyboard shortcuts
+    let ctrlKPressed = false;
+    let ctrlKTimer: number | null = null;
+
     const keydownHandler = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey; // Cmd on Mac, Ctrl on Windows/Linux
 
-      // Log ALL modifier key presses for debugging
-      if (isMod) {
-        console.log(`[MD4H] Key pressed: ${e.key}, metaKey: ${e.metaKey}, ctrlKey: ${e.ctrlKey}`);
-      }
-
+      // Save shortcut - immediate save
       // Save shortcut - immediate save
       if (isMod && e.key === 's') {
-        console.log('[MD4H] *** SAVE SHORTCUT TRIGGERED ***');
         e.preventDefault();
         e.stopPropagation();
         immediateUpdate();
 
-        // Visual feedback - flash the document briefly
-        document.body.style.opacity = '0.7';
+        document.body.classList.add('saving-feedback');
         setTimeout(() => {
-          document.body.style.opacity = '1';
-        }, 100);
+          document.body.classList.remove('saving-feedback');
+        }, 150);
 
         return;
       }
@@ -650,27 +661,53 @@ function initializeEditor(initialContent: string) {
 
       if (isMod && formattingShortcuts.includes(e.key.toLowerCase())) {
         e.stopPropagation(); // Stop event from reaching VS Code
-        console.log(`[MD4H] Intercepted Cmd+${e.key.toUpperCase()} for editor`);
         // TipTap will handle the formatting
         return;
       }
 
-      // Intercept Cmd+K for link in markdown context
+      // Handle Ctrl+K chord for link insertion
       if (isMod && e.key === 'k') {
+        // Start chord detection - set flag and timer
+        ctrlKPressed = true;
+        if (ctrlKTimer) {
+          clearTimeout(ctrlKTimer);
+        }
+        ctrlKTimer = window.setTimeout(() => {
+          ctrlKPressed = false;
+          ctrlKTimer = null;
+        }, 1000); // 1 second timeout for chord completion
+        return;
+      }
+
+      // Check for Cmd/Ctrl+K Cmd/Ctrl+L chord completion
+      if (ctrlKPressed && isMod && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[MD4H] Link shortcut');
         if (editor) {
           showLinkDialog(editor);
         }
+        // Reset chord state
+        ctrlKPressed = false;
+        if (ctrlKTimer) {
+          clearTimeout(ctrlKTimer);
+          ctrlKTimer = null;
+        }
         return;
+      }
+
+      // Reset chord state on any other key press
+      if (ctrlKPressed && (!isMod || e.key !== 'l')) {
+        ctrlKPressed = false;
+        if (ctrlKTimer) {
+          clearTimeout(ctrlKTimer);
+          ctrlKTimer = null;
+        }
       }
 
       // Intercept Cmd/Ctrl+F for in-document search
       if (isMod && e.key === 'f') {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[MD4H] Search shortcut');
         if (editor) {
           toggleSearchOverlay(editor);
         }
@@ -819,7 +856,7 @@ function initializeEditor(initialContent: string) {
  */
 window.addEventListener('message', (event: MessageEvent) => {
   try {
-    const message = event.data;
+    const message = event.data as WebviewMessage;
 
     switch (message.type) {
       case 'update':
@@ -856,6 +893,10 @@ window.addEventListener('message', (event: MessageEvent) => {
         }
         if (typeof message.imagePathBase === 'string') {
           (window as any).imagePathBase = message.imagePathBase;
+        }
+        // Update showImageHoverOverlay setting
+        if (typeof message.showImageHoverOverlay === 'boolean') {
+          (window as any).showImageHoverOverlay = message.showImageHoverOverlay;
         }
         break;
       case 'imageResized': {
@@ -1000,7 +1041,7 @@ window.addEventListener('message', (event: MessageEvent) => {
         const requestId = message.requestId as string;
         const callback = imageReferencesCallbacks.get(requestId);
         if (callback) {
-          callback(message as ImageReferencesPayload);
+          callback(message as unknown as ImageReferencesPayload);
           imageReferencesCallbacks.delete(requestId);
         }
         break;
@@ -1009,9 +1050,34 @@ window.addEventListener('message', (event: MessageEvent) => {
         const requestId = message.requestId as string;
         const callback = imageRenameCheckCallbacks.get(requestId);
         if (callback) {
-          callback(message as ImageRenameCheckPayload);
+          callback(message as unknown as ImageRenameCheckPayload);
           imageRenameCheckCallbacks.delete(requestId);
         }
+        break;
+      }
+      case 'auditCheckFileResult': {
+        import('./features/auditDocument').then(({ handleAuditCheckResult }) => {
+          handleAuditCheckResult(
+            message.requestId as string,
+            message.exists as boolean,
+            message.suggestions as string[] | undefined
+          );
+        });
+        break;
+      }
+      case 'auditCheckUrlResult': {
+        import('./features/auditDocument').then(({ handleAuditUrlCheckResult }) => {
+          handleAuditUrlCheckResult(message.requestId as string, message.reachable as boolean);
+        });
+        break;
+      }
+      case 'auditPickFileResult': {
+        import('./features/auditDocument').then(({ handleAuditPickFileResult }) => {
+          handleAuditPickFileResult(
+            message.requestId as string,
+            (message.selectedPath as string | null) ?? null
+          );
+        });
         break;
       }
       case 'imageMetadata': {
@@ -1239,15 +1305,15 @@ function updateEditorContent(markdown: string) {
     if (incomingHash === lastSentContentHash) {
       // Also check timestamp to allow legitimate identical content after a delay
       const timeSinceLastSend = Date.now() - lastSentTimestamp;
-      if (timeSinceLastSend < 2000) {
+      if (timeSinceLastSend < SYNC_ECHO_TIMEOUT_MS) {
         console.log('[MD4H] Ignoring update (matches content we just sent)');
         return;
       }
     }
 
-    // Don't update if user edited recently (within 2 seconds)
+    // Don't update if user edited recently to prevent cursor jumping (m3)
     const timeSinceLastEdit = Date.now() - lastUserEditTime;
-    if (timeSinceLastEdit < 2000) {
+    if (timeSinceLastEdit < RECENT_EDIT_THRESHOLD_MS) {
       console.log(`[MD4H] Skipping update - user recently edited (${timeSinceLastEdit}ms ago)`);
       return;
     }
@@ -1300,6 +1366,57 @@ function updateEditorContent(markdown: string) {
   }
 }
 
+/**
+ * Detect whether paste is happening inside a code-oriented context.
+ * `editor.isActive('codeBlock')` can be false in some node-selection/focus states
+ * even though the visible target is a code block (e.g., HTML block UI).
+ */
+function isCodeContextForPaste(editorInstance: Editor, event: ClipboardEvent): boolean {
+  if (editorInstance.isActive('codeBlock')) {
+    return true;
+  }
+
+  const selection = editorInstance.state.selection as {
+    node?: { type?: { name?: string } };
+    $from?: { parent?: { type?: { name?: string } } };
+    $anchor?: { parent?: { type?: { name?: string } } };
+  };
+
+  if (selection?.node?.type?.name === 'codeBlock') {
+    return true;
+  }
+
+  if (selection?.$from?.parent?.type?.name === 'codeBlock') {
+    return true;
+  }
+
+  if (selection?.$anchor?.parent?.type?.name === 'codeBlock') {
+    return true;
+  }
+
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('pre.code-block-highlighted')) {
+    return true;
+  }
+
+  const domSelection = window.getSelection?.();
+  const anchorNode = domSelection?.anchorNode;
+  const anchorElement =
+    anchorNode instanceof HTMLElement ? anchorNode : (anchorNode?.parentElement ?? null);
+  if (anchorElement?.closest('pre.code-block-highlighted')) {
+    return true;
+  }
+
+  return false;
+}
+
+function insertRawCodeText(editorInstance: Editor, text: string): void {
+  editorInstance.commands.insertContent({
+    type: 'text',
+    text,
+  });
+}
+
 // Initialize when DOM is ready and content is available
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
@@ -1325,6 +1442,37 @@ window.addEventListener('toggleTocOutline', () => {
   if (editor) {
     toggleTocOverlay(editor);
     updateToolbarStates();
+  }
+});
+
+// Handle custom event for document audit from toolbar button
+window.addEventListener('auditDocument', async () => {
+  if (!editor) return;
+  console.log('[MD4H] Running document audit...');
+  try {
+    const { runAudit, auditPluginKey } = await import('./features/auditDocument');
+    const { showAuditOverlay, showToast, dismissToast } = await import('./features/auditOverlay');
+
+    // Clear old decorations
+    editor.view.dispatch(editor.state.tr.setMeta(auditPluginKey, []));
+
+    // Show loading toast
+    const loadingToastId = showToast('Auditing document...', 'loading');
+      
+    const issues = await runAudit(editor);
+    console.log('[MD4H] Audit complete, issues found:', issues.length);
+    
+    // Dismiss loading toast
+    dismissToast(loadingToastId);
+    
+    showAuditOverlay(editor, issues);
+
+    // Apply decorations
+    if (issues.length > 0) {
+      editor.view.dispatch(editor.state.tr.setMeta(auditPluginKey, issues));
+    }
+  } catch (error) {
+    console.error('[MD4H] Audit failed:', error);
   }
 });
 
@@ -1387,7 +1535,7 @@ document.addEventListener(
     if (!clipboardData) return;
 
     // If cursor is inside a code block, handle specially
-    if (editor.isActive('codeBlock')) {
+    if (isCodeContextForPaste(editor, event)) {
       event.preventDefault();
       event.stopPropagation();
 
@@ -1397,8 +1545,8 @@ document.addEventListener(
       const fenced = parseFencedCode(plainText);
       const codeToInsert = fenced ? fenced.content : plainText;
 
-      // Insert as plain text (TipTap will handle it correctly in code block)
-      editor.commands.insertContent(codeToInsert);
+      // Insert as a text node to prevent TipTap from parsing HTML/markdown inside code blocks.
+      insertRawCodeText(editor, codeToInsert);
       return;
     }
 
@@ -1447,5 +1595,13 @@ export const __testing = {
   resetSyncState() {
     lastSentContentHash = null;
     lastSentTimestamp = 0;
+  },
+  isCodeContextForPasteForTests(event: ClipboardEvent) {
+    if (!editor) return false;
+    return isCodeContextForPaste(editor, event);
+  },
+  insertRawCodeTextForTests(text: string) {
+    if (!editor) return;
+    insertRawCodeText(editor, text);
   },
 };

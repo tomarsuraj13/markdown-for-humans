@@ -15,7 +15,7 @@
  * - Proper atomic node behavior for reliable selection/deletion
  */
 
-import Image from '@tiptap/extension-image';
+import Image, { type ImageOptions } from '@tiptap/extension-image';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { JSONContent, MarkdownRendererHelpers, RenderContext } from '@tiptap/core';
 import {
@@ -30,6 +30,10 @@ import { showImageMetadataFooter, hideImageMetadataFooter } from '../features/im
 const INDENT_PIXELS_PER_LEVEL = 30;
 const INDENT_SPACES_PER_LEVEL = 4;
 const MAX_INDENT_PIXELS = 240;
+
+type CustomImageOptions = ImageOptions & {
+  getShowImageHoverOverlay: () => boolean;
+};
 
 function getImageCacheBustTimestamp(markdownPath: string): number | null {
   const maybeMap = (window as any)?._imageCacheBust;
@@ -106,6 +110,19 @@ export const CustomImage = Image.extend({
   // Since inline is true, images belong to 'inline' group
   group: 'inline',
 
+  addOptions(): CustomImageOptions {
+    const parentOpts = (this.parent?.() ?? {}) as Partial<ImageOptions>;
+    return {
+      ...parentOpts,
+      inline: parentOpts.inline ?? true,
+      allowBase64: parentOpts.allowBase64 ?? true,
+      HTMLAttributes: parentOpts.HTMLAttributes ?? {},
+      resize: parentOpts.resize ?? false,
+      // Define a getter function so it always fetches the freshest dynamic value
+      getShowImageHoverOverlay: () => true,
+    };
+  },
+
   addProseMirrorPlugins() {
     return [
       // Disable default image paste handling to prevent double insertion
@@ -181,7 +198,7 @@ export const CustomImage = Image.extend({
   },
 
   addNodeView() {
-    return ({ node, HTMLAttributes, editor }) => {
+    return ({ node, HTMLAttributes, editor, extension }) => {
       // Create wrapper to hold image and resize icon
       const wrapper = document.createElement('span');
       wrapper.className = 'image-wrapper';
@@ -281,7 +298,12 @@ export const CustomImage = Image.extend({
 
       // Only show menu button on hover if image is loaded and not external
       const handleMouseEnter = () => {
-        if (isImageLoaded && dom.complete && !isExternal) {
+        if (
+          isImageLoaded &&
+          dom.complete &&
+          !isExternal &&
+          extension.options.getShowImageHoverOverlay() !== false
+        ) {
           wrapper.classList.add('image-hover-active');
           // Show metadata footer
           const vscodeApi = (window as any).vscode;
@@ -301,9 +323,11 @@ export const CustomImage = Image.extend({
         if (relatedTarget && wrapper.contains(relatedTarget)) {
           return;
         }
-        wrapper.classList.remove('image-hover-active');
-        // Hide metadata footer
-        hideImageMetadataFooter(wrapper);
+        if (extension.options.getShowImageHoverOverlay() !== false) {
+          wrapper.classList.remove('image-hover-active');
+          // Hide metadata footer
+          hideImageMetadataFooter(wrapper);
+        }
       };
 
       wrapper.addEventListener('mouseenter', handleMouseEnter);

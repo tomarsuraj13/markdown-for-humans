@@ -7,7 +7,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
-import { outlineViewProvider } from '../features/outlineView';
+import * as crypto from 'crypto';
+import * as http from 'http';
+import * as https from 'https';
+import * as dns from 'dns';
+import { isIP } from 'net';
+import { outlineViewProvider, type OutlineEntry } from '../features/outlineView';
 import { setActiveWebviewPanel, getActiveWebviewPanel } from '../activeWebview';
 import { buildResizeBackupLocation, resolveBackupPathWithCollisionDetection } from './imageBackups';
 
@@ -135,11 +140,64 @@ export function updateFilenameDimensions(
  * Provides WYSIWYG editing using TipTap in a webview
  */
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
+  private static readonly URL_CHECK_TIMEOUT_MS = 2000;
+  private static readonly MAX_FILE_SEARCH_RESULTS = 2000;
+
   // Track pending edits to avoid feedback loops
   // Key: document URI, Value: timestamp of last edit from webview
   private pendingEdits = new Map<string, number>();
   // Remember last content sent from the webview so we can skip redundant updates
   private lastWebviewContent = new Map<string, string>();
+  // --- Audit Search Tuning ---
+  /**
+   * Minimum length required to attempt ANY file suggestions.
+   * Rationale: Filenames under 3 characters (e.g., "a.png", "1.md") are too generic.
+   * Searching for them yields too many false positives and creates noisy, unhelpful UI suggestions.
+   */
+  private readonly MIN_BASENAME_LENGTH_FOR_SUGGESTION = 5;
+  /**
+   * Minimum length required to trigger broad fuzzy searching (name.).
+   * Rationale: Glob fuzzy searches are highly CPU-intensive across large workspaces.
+   * Requiring at least 4 characters prevents UI freezes and massive memory spikes
+   * that would be caused by generating thousands of matches for short strings like "ab".
+   */
+
+  private readonly MIN_BASENAME_LENGTH_FOR_FUZZY = 6;
+
+  private isOutlineEntry(value: unknown): value is OutlineEntry {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const candidate = value as Partial<OutlineEntry>;
+    return (
+      typeof candidate.level === 'number' &&
+      typeof candidate.text === 'string' &&
+      typeof candidate.pos === 'number' &&
+      typeof candidate.sectionEnd === 'number'
+    );
+  }
+
+  private parseOutlineEntries(value: unknown): OutlineEntry[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter(entry => this.isOutlineEntry(entry));
+  }
+
+  private isExportMermaidImage(
+    value: unknown
+  ): value is { id: string; pngDataUrl: string; originalCode: string; originalSvg: string } {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const candidate = value as Record<string, unknown>;
+    return (
+      typeof candidate.id === 'string' &&
+      typeof candidate.pngDataUrl === 'string' &&
+      typeof candidate.originalCode === 'string' &&
+      typeof candidate.originalSvg === 'string'
+    );
+  }
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new MarkdownEditorProvider(context);
@@ -217,17 +275,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
   /**
    * Get base path for image operations
-   * Returns workspace folder or document directory if available, otherwise home directory
-   * This enables absolute paths to work even without workspace
+   * Returns workspace folder or document directory if available, otherwise OS temp directory.
+   * This keeps untitled/no-workspace access more restrictive than using the home directory.
    */
   private getImageBasePath(document: vscode.TextDocument): string | null {
     const docDir = this.getDocumentDirectory(document);
     if (docDir) {
       return docDir;
     }
-    // For untitled files without workspace, use user's home directory
-    // This allows absolute paths to work
-    return os.homedir();
+    // For untitled files without workspace, use temp directory to reduce file system exposure.
+    return os.tmpdir();
   }
 
   /**
@@ -255,7 +312,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     // Default: relativeToDocument
     return (
-      this.getDocumentDirectory(document) ?? this.getWorkspaceFolderPath(document) ?? os.homedir()
+      this.getDocumentDirectory(document) ?? this.getWorkspaceFolderPath(document) ?? os.tmpdir()
     );
   }
 
@@ -293,8 +350,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       // If not in a workspace but is a file, allow the document's directory
       localResourceRoots.push(vscode.Uri.file(path.dirname(document.uri.fsPath)));
     } else {
-      // For untitled files without workspace, include home directory to allow absolute path image resolution
-      localResourceRoots.push(vscode.Uri.file(os.homedir()));
+      // For untitled files without workspace, allow the OS temp directory as a restrictive fallback.
+      localResourceRoots.push(vscode.Uri.file(os.tmpdir()));
     }
 
     webviewPanel.webview.options = {
@@ -345,7 +402,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (
         e.affectsConfiguration('markdownForHumans.imageResize.skipWarning') ||
         e.affectsConfiguration('markdownForHumans.imagePath') ||
-        e.affectsConfiguration('markdownForHumans.imagePathBase')
+        e.affectsConfiguration('markdownForHumans.imagePathBase') ||
+        e.affectsConfiguration('markdownForHumans.imagePreview.hover.enabled')
       ) {
         const config = vscode.workspace.getConfiguration();
         const skipWarning = config.get<boolean>('markdownForHumans.imageResize.skipWarning', false);
@@ -354,11 +412,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePathBase',
           'relativeToDocument'
         );
+        const showImageHoverOverlay = config.get<boolean>(
+          'markdownForHumans.imagePreview.hover.enabled',
+          true
+        );
         webviewPanel.webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
           imagePath: imagePath,
           imagePathBase: imagePathBase,
+          showImageHoverOverlay: showImageHoverOverlay,
         });
       }
     });
@@ -420,6 +483,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       'markdownForHumans.imagePathBase',
       'relativeToDocument'
     );
+    const showImageHoverOverlay = config.get<boolean>(
+      'markdownForHumans.imagePreview.hover.enabled',
+      true
+    );
 
     webview.postMessage({
       type: 'update',
@@ -427,6 +494,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       skipResizeWarning: skipWarning,
       imagePath: imagePath,
       imagePathBase: imagePathBase,
+      showImageHoverOverlay: showImageHoverOverlay,
     });
   }
 
@@ -458,17 +526,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePathBase',
           'relativeToDocument'
         );
+        const showImageHoverOverlay = config.get<boolean>(
+          'markdownForHumans.imagePreview.hover.enabled',
+          true
+        );
         webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
           imagePath: imagePath,
           imagePathBase: imagePathBase,
+          showImageHoverOverlay: showImageHoverOverlay,
         });
         break;
       }
       case 'outlineUpdated': {
-        const outline = (message.outline || []) as any[];
-        outlineViewProvider.setOutline(outline as any);
+        const outline = this.parseOutlineEntries(message.outline);
+        outlineViewProvider.setOutline(outline);
         break;
       }
       case 'selectionChange': {
@@ -557,6 +630,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       case 'openImage':
         void this.handleOpenImage(message, document);
         break;
+      case 'auditCheckFile':
+        void this.handleAuditCheckFile(message, document, webview);
+        break;
+      case 'auditCheckUrl':
+        void this.handleAuditCheckUrl(message, document, webview);
+        break;
+      case 'auditPickFile':
+        void this.handleAuditPickFile(message, document, webview);
+        break;
     }
   }
 
@@ -569,13 +651,373 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     const format = message.format as string;
     const html = message.html as string;
-    const mermaidImages = message.mermaidImages as any[];
+    const mermaidImages = Array.isArray(message.mermaidImages)
+      ? message.mermaidImages.filter(image => this.isExportMermaidImage(image))
+      : [];
     const title = message.title as string;
 
     // Import dynamically to avoid loading heavy dependencies on startup
     const { exportDocument } = await import('../features/documentExport');
 
     await exportDocument(format, html, mermaidImages, title, document);
+  }
+
+  /**
+   * Check if a file exists (used by Document Audit)
+   */
+  private async handleAuditCheckFile(
+    message: { type: string; [key: string]: unknown },
+    document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const rawRelativePath = message.relativePath as string;
+    const requestId = message.requestId as string;
+    const basePath = this.getImageBasePath(document);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+
+    if (!basePath) {
+      webview.postMessage({
+        type: 'auditCheckFileResult',
+        requestId,
+        exists: false,
+      });
+      return;
+    }
+
+    try {
+      // Basic normalization logic similar to handleResolveImageUri
+      const normalizedPath = rawRelativePath.replace(/%20/g, ' ');
+      const absolutePath = path.resolve(basePath, normalizedPath);
+      const fileUri = vscode.Uri.file(absolutePath);
+
+      await vscode.workspace.fs.stat(fileUri);
+      webview.postMessage({
+        type: 'auditCheckFileResult',
+        requestId,
+        exists: true,
+      });
+    } catch {
+      const suggestions: string[] = [];
+      try {
+        // Enhanced fuzzy matching suggestions
+        const normalizedPath = rawRelativePath.replace(/%20/g, ' ');
+        const basename = path.basename(normalizedPath, path.extname(normalizedPath));
+        const extension = path.extname(normalizedPath).toLowerCase();
+
+        if (basename.length >= this.MIN_BASENAME_LENGTH_FOR_SUGGESTION) {
+          const searchExclude = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.next/**}';
+          const exactPattern = workspaceFolder
+            ? new vscode.RelativePattern(workspaceFolder, `**/${basename}.*`)
+            : `**/${basename}.*`;
+          const fuzzyPattern = workspaceFolder
+            ? new vscode.RelativePattern(workspaceFolder, `**/*${basename}*.*`)
+            : `**/*${basename}*.*`;
+          const shouldRunFuzzySearch = basename.length >= this.MIN_BASENAME_LENGTH_FOR_FUZZY;
+          const extensionPattern =
+            extension && workspaceFolder
+              ? new vscode.RelativePattern(workspaceFolder, `**/*${extension}`)
+              : extension
+                ? `**/*${extension}`
+                : null;
+
+          // Strategy 1: Exact basename match with any extension
+          const exactBasenameFiles = await vscode.workspace.findFiles(
+            exactPattern,
+            searchExclude,
+            8
+          );
+
+          // Strategy 2: Fuzzy basename matching for sufficiently specific names.
+          // Very short basenames create broad scans and low-quality suggestions.
+          const fuzzyFiles = shouldRunFuzzySearch
+            ? await vscode.workspace.findFiles(fuzzyPattern, searchExclude, 6)
+            : [];
+
+          // Strategy 3: Find some files with the same extension as fallback
+          let extensionFiles: vscode.Uri[] = [];
+          if (extensionPattern) {
+            try {
+              extensionFiles = await vscode.workspace.findFiles(extensionPattern, searchExclude, 3);
+            } catch (e) {
+              console.warn('[MD4H] Error finding extension files for audit suggestions:', e);
+            }
+          }
+
+          // 1. Combine all raw results
+          const allFiles = [...exactBasenameFiles, ...fuzzyFiles, ...extensionFiles];
+          // 2. Convert all absolute paths to relative, web-safe paths
+          const rawSuggestions = allFiles.map(f => {
+            const rel = path.relative(basePath, f.fsPath).replace(/\\/g, '/');
+            return rel.startsWith('.') ? rel : `./${rel}`;
+          });
+
+          // 3. Deduplicate
+          const uniqueSuggestions = Array.from(new Set(rawSuggestions));
+
+          // 4. Sort based on clear priority rules
+          uniqueSuggestions.sort((a, b) => {
+            // Priority 1: Does the extension match the original?
+            const aHasExactExt = extension && path.extname(a).toLowerCase() === extension;
+            const bHasExactExt = extension && path.extname(b).toLowerCase() === extension;
+            if (aHasExactExt && !bHasExactExt) return -1;
+            if (!aHasExactExt && bHasExactExt) return 1;
+
+            // Priority 2: Does the basename match exactly?
+            const aBase = path.basename(a, path.extname(a));
+            const bBase = path.basename(b, path.extname(b));
+            const aExactBase = aBase === basename;
+            const bExactBase = bBase === basename;
+            if (aExactBase && !bExactBase) return -1;
+            if (!aExactBase && bExactBase) return 1;
+
+            // Priority 3: Shorter paths are usually closer to the current directory
+            return a.length - b.length;
+          });
+
+          // 5. Apply the top 5 sorted results to the suggestions array
+          suggestions.push(...uniqueSuggestions.slice(0, 5));
+        }
+      } catch (e) {
+        console.warn('[MD4H] Error finding audit file suggestions:', e);
+      }
+
+      webview.postMessage({
+        type: 'auditCheckFileResult',
+        requestId,
+        exists: false,
+        suggestions: suggestions.slice(0, 5), // Limit to 5 for UI
+      });
+    }
+  }
+
+  /**
+   * Open a VS Code file picker dialog for the Document Audit feature.
+   *
+   * Sends back an 'auditPickFileResult' message with the relative path of the
+   * file selected by the user, or null if the user cancelled.
+   *
+   * @param message - Webview message containing requestId and fileType ('image' | 'any').
+   * @param document - Active text document (used to derive the relative path base).
+   * @param webview - Target webview to post the result back to.
+   */
+  private async handleAuditPickFile(
+    message: { type: string; [key: string]: unknown },
+    document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const requestId = message.requestId as string;
+    const fileType = message.fileType as string;
+    const basePath = this.getImageBasePath(document);
+
+    // Build file-type filter
+    const imageFilters: { [name: string]: string[] } = {
+      Images: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif'],
+    };
+    const allFilters: { [name: string]: string[] } = {
+      'All Files': ['*'],
+      Markdown: ['md', 'mdx'],
+      Images: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
+    };
+    const filters = fileType === 'image' ? imageFilters : allFilters;
+
+    try {
+      const defaultUri = basePath ? vscode.Uri.file(basePath) : undefined;
+      const selected = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        canSelectFolders: false,
+        canSelectFiles: true,
+        openLabel: 'Select File',
+        defaultUri,
+        filters,
+      });
+
+      if (!selected || selected.length === 0) {
+        // User cancelled
+        webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: null });
+        return;
+      }
+
+      const absoluteSelected = selected[0].fsPath;
+
+      // Compute path relative to the document's base directory
+      let relativePath: string | null = null;
+      if (basePath) {
+        const rel = path.relative(basePath, absoluteSelected);
+        // Only use relative path if the file is within or near the base directory
+        if (!path.isAbsolute(rel)) {
+          // Normalize to forward-slashes for markdown compatibility
+          relativePath = rel.replace(/\\/g, '/');
+          if (!relativePath.startsWith('.')) {
+            relativePath = './' + relativePath;
+          }
+        }
+      }
+
+      // Fall back to the absolute path when file is outside the document root
+      // Fall back to the absolute path when file is outside the document root
+      if (!relativePath) {
+        relativePath = absoluteSelected.replace(/\\/g, '/');
+        // Warn the user about document portability issues
+        vscode.window.showWarningMessage(
+          'You selected a file outside the current workspace. An absolute path was used, which may break if you share this document.'
+        );
+      }
+      webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: relativePath });
+    } catch (e) {
+      console.error('[MD4H] handleAuditPickFile error:', e);
+      webview.postMessage({ type: 'auditPickFileResult', requestId, selectedPath: null });
+    }
+  }
+
+  private isPrivateAddress(ip: string): boolean {
+    // Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1)
+    // These can be returned by dns.lookup on dual-stack systems and would bypass
+    // the IPv4 regex checks below without this normalization.
+    const ipv4MappedMatch = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+    if (ipv4MappedMatch) {
+      return this.isPrivateAddress(ipv4MappedMatch[1]);
+    }
+
+    const PRIVATE_IP_RANGES = [
+      /^127\./,
+      /^10\./,
+      /^172\.(1[6-9]|2\d|3[01])\./,
+      /^192\.168\./,
+      /^169\.254\./,
+      /^0\./,
+    ];
+    if (ip === '::1' || ip === '::' || ip === '0.0.0.0') return true;
+    if (ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) return true;
+    return PRIVATE_IP_RANGES.some(range => range.test(ip));
+  }
+
+  private async isSafeUrl(hostname: string): Promise<boolean> {
+    if (hostname.toLowerCase() === 'localhost') {
+      return false;
+    }
+    if (isIP(hostname)) {
+      return !this.isPrivateAddress(hostname);
+    }
+    try {
+      const addresses = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+      return !addresses.some(ip => this.isPrivateAddress(ip.address));
+    } catch {
+      return false;
+    }
+  }
+
+  private async resolveSafeAddress(hostname: string): Promise<string | null> {
+    if (hostname.toLowerCase() === 'localhost') {
+      return null;
+    }
+    if (isIP(hostname)) {
+      return this.isPrivateAddress(hostname) ? null : hostname;
+    }
+    try {
+      const addresses = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+      const publicAddress = addresses.find(address => !this.isPrivateAddress(address.address));
+      return publicAddress?.address ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async handleAuditCheckUrl(
+    message: { type: string; [key: string]: unknown },
+    _document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const url = message.url as string;
+    const requestId = message.requestId as string;
+
+    if (!url) {
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable: false,
+      });
+      return;
+    }
+
+    try {
+      const parsed = new URL(url);
+      if (!(await this.isSafeUrl(parsed.hostname))) {
+        webview.postMessage({
+          type: 'auditCheckUrlResult',
+          requestId,
+          reachable: false,
+        });
+        return;
+      }
+      const safeAddress = await this.resolveSafeAddress(parsed.hostname);
+      if (!safeAddress) {
+        webview.postMessage({
+          type: 'auditCheckUrlResult',
+          requestId,
+          reachable: false,
+        });
+        return;
+      }
+
+      // Use Node's native http/https modules for guaranteed cross-version consistency.
+      // Try HEAD first; fall back to GET if the server rejects HEAD (405/403/404).
+      const requestOpts = {
+        hostname: safeAddress,
+        headers: {
+          Host: parsed.host,
+          'User-Agent': 'MarkdownForHumans-LinkChecker/1.0',
+        } as Record<string, string>,
+        servername: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        timeout: MarkdownEditorProvider.URL_CHECK_TIMEOUT_MS,
+      };
+      const httpModule = parsed.protocol === 'https:' ? https : http;
+
+      const tryRequest = (method: string): Promise<number> =>
+        new Promise<number>(resolve => {
+          try {
+            const req = httpModule.request(
+              { ...requestOpts, method },
+              (res: any) => {
+                // Consume body so the socket is released
+                res.resume();
+                resolve(res.statusCode as number);
+              }
+            );
+            req.on('error', () => resolve(0));
+            req.on('timeout', () => {
+              req.destroy();
+              resolve(0);
+            });
+            req.end();
+          } catch {
+            resolve(0);
+          }
+        });
+
+      let status = await tryRequest('HEAD');
+
+      // Many servers block HEAD or return misleading codes; retry with GET
+      if (status === 403 || status === 404 || status === 405) {
+        status = await tryRequest('GET');
+      }
+
+      const reachable = status >= 200 && status < 400;
+
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable,
+      });
+    } catch (e) {
+      console.warn('[MD4H] URL check failed', e);
+      webview.postMessage({
+        type: 'auditCheckUrlResult',
+        requestId,
+        reachable: false,
+      });
+    }
   }
 
   /**
@@ -1867,10 +2309,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }) || { all: true };
       const requestId = (message.requestId as number) || 0;
 
-      console.log('[MD4H] File search request:', { query, filters, requestId });
+      console.debug('[MD4H] File search request:', { query, filters, requestId });
 
       if (!query || query.trim().length < 1) {
-        console.log('[MD4H] Empty query, returning empty results');
+        console.debug('[MD4H] Empty query, returning empty results');
         webview.postMessage({
           type: 'fileSearchResults',
           results: [],
@@ -1893,11 +2335,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       // More permissive exclude pattern - only exclude truly unnecessary directories
       const excludePattern =
         '{**/node_modules/**,**/.git/**,**/.vscode/**,**/dist/**,**/build/**,**/.next/**,**/coverage/**}';
-      console.log('[MD4H] Searching files with pattern:', excludePattern);
+      console.debug('[MD4H] Searching files with pattern:', excludePattern);
 
-      // Increase max results to ensure we have enough files to search through
-      const allFiles = await vscode.workspace.findFiles('**/*', excludePattern, 10000);
-      console.log('[MD4H] Found', allFiles.length, 'files total');
+      // Use a more conservative limit (2000) to prevent memory pressure in massive repositories
+      // while still providing enough results for most users.
+      const allFiles = await vscode.workspace.findFiles(
+        '**/*',
+        excludePattern,
+        MarkdownEditorProvider.MAX_FILE_SEARCH_RESULTS
+      );
+      console.debug('[MD4H] Found', allFiles.length, 'files total');
 
       let filteredFiles = allFiles;
       if (!filters.all) {
@@ -1919,7 +2366,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const ext = path.extname(uri.fsPath).toLowerCase();
           return allowedExtensions.has(ext);
         });
-        console.log('[MD4H] After filter:', filteredFiles.length, 'files');
+        console.debug('[MD4H] After filter:', filteredFiles.length, 'files');
       }
 
       const queryLower = query.toLowerCase().trim();
@@ -2563,13 +3010,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   }
 }
 
-function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+function getNonce(): string {
+  return crypto.randomBytes(16).toString('hex');
 }
 
 /**

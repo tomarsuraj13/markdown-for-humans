@@ -197,6 +197,47 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       skipResizeWarning: false,
       imagePath: 'images',
       imagePathBase: 'relativeToDocument',
+      showImageHoverOverlay: true,
     });
+  });
+
+  it('should respect showImageHoverOverlay config when disabled', () => {
+    const provider = new MarkdownEditorProvider({} as unknown as vscode.ExtensionContext);
+    const document = createDocument('fresh content');
+    const webview = { postMessage: jest.fn() };
+
+    (provider as unknown as { lastWebviewContent: Map<string, string> }).lastWebviewContent.set(
+      document.uri.toString(),
+      'old content'
+    );
+
+    const getConfigurationSpy = jest.spyOn(vscode.workspace, 'getConfiguration');
+    getConfigurationSpy.mockReturnValue({
+      get: (key: string, defaultValue?: unknown) => {
+        if (key === 'markdownForHumans.imagePreview.hover.enabled') {
+          return false;
+        }
+        return defaultValue;
+      },
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    (
+      provider as unknown as {
+        updateWebview: (doc: vscode.TextDocument, wv: { postMessage: jest.Mock }) => void;
+      }
+    ).updateWebview(document as unknown as vscode.TextDocument, webview);
+
+    expect(webview.postMessage).toHaveBeenCalledTimes(1);
+    const payload = (webview.postMessage as jest.Mock).mock.calls[0][0];
+    expect(payload).toEqual({
+      type: 'update',
+      content: 'fresh content',
+      skipResizeWarning: false,
+      imagePath: 'images',
+      imagePathBase: 'relativeToDocument',
+      showImageHoverOverlay: false,
+    });
+
+    getConfigurationSpy.mockRestore();
   });
 });
