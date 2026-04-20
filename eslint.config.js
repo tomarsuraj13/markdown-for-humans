@@ -31,6 +31,22 @@ module.exports = [
         ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'eslint.config.js']
     },
     {
+        files: ['src/__tests__/**'],
+        linterOptions: {
+            reportUnusedDisableDirectives: false
+        },
+        rules: {
+            'no-console': 'off',
+            '@typescript-eslint/no-explicit-any': 'off'
+        }
+    },
+    {
+        files: ['src/webview/**'],
+        rules: {
+            'no-console': 'off'
+        }
+    },
+    {
         files: ['scripts/**/*.js'],
         languageOptions: {
             globals: {

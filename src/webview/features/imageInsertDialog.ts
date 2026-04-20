@@ -494,6 +494,7 @@ export async function showImageInsertDialog(editor: Editor, vscodeApi: VsCodeApi
       }
     };
     document.addEventListener('keydown', handleEscape);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (overlay as any)._escapeHandler = handleEscape;
   });
 }

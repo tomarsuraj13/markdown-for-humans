@@ -645,6 +645,7 @@ async function exportToWord(
 
   try {
     const docxModule = await import('docx');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const docx = (docxModule as any).default ?? docxModule;
 
     progress.report({ message: 'Building document...', increment: 30 });
@@ -670,6 +671,7 @@ async function exportToWord(
     progress.report({ increment: 20 });
     return true; // Export succeeded
   } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (error && (error as any).code === 'MODULE_NOT_FOUND') {
       throw new Error('Word export requires docx library. Install with: npm install docx');
     }
@@ -823,15 +825,19 @@ function getExportStyles(theme: string): string {
  */
 async function htmlToDocx(
   html: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   docx: any,
   theme: string,
   document: vscode.TextDocument
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const children: any[] = [];
 
   // Parse HTML with Cheerio (proper DOM parser, handles nested tags)
   // Lazy-load to keep module init and test transforms lightweight.
   const cheerioModule = await import('cheerio');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cheerio = (cheerioModule as any).default ?? cheerioModule;
   const $ = cheerio.load(html);
 
@@ -914,6 +920,7 @@ async function htmlToDocx(
 /**
  * Helper to get heading level
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getHeadingLevel(tagName: string, docx: any): any {
   switch (tagName) {
     case 'h1':
@@ -937,11 +944,16 @@ function getHeadingLevel(tagName: string, docx: any): any {
  * Parse children of a paragraph-like element (p, li) into docx Runs
  */
 async function parseParagraphChildren(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   $: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   docx: any,
   document: vscode.TextDocument
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const runs: any[] = [];
   const contents = $(element).contents();
 
