@@ -225,6 +225,7 @@ const adjustLinkBoundary = (
   setSelectionHighlight(workingRange);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const findNearestTextRange = (text: string, range: Range, doc: any): Range | null => {
   if (!text) return null;
   const context = getParentContext(range, doc);
@@ -392,6 +393,7 @@ function createAutocompleteDropdown(urlInput: HTMLInputElement): HTMLElement {
   window.addEventListener('scroll', updatePosition, true);
 
   // Store update function for later use
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (dropdown as any)._updatePosition = updatePosition;
 
   return dropdown;
@@ -497,7 +499,9 @@ function updateAutocompleteDropdown(
   dropdown.style.display = 'block';
 
   // Update position when showing results
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((dropdown as any)._updatePosition) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (dropdown as any)._updatePosition();
   }
 
@@ -593,6 +597,7 @@ function handleFileSearch(query: string, filters: FileFilterState): void {
 
   fileSearchDebounceTimer = setTimeout(() => {
     const requestId = ++fileSearchRequestId;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const vscode = (window as any).vscode;
     if (vscode && typeof vscode.postMessage === 'function') {
       console.log('[MD4H] Sending file search request:', {

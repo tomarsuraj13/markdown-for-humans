@@ -19,6 +19,7 @@ interface PluginState {
 
 function isImageNode(selection: unknown, imageTypeName: string): selection is NodeSelection {
   // Check for NodeSelection (handle both instanceof and duck-typing for test environments)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sel = selection as any;
   if (sel && typeof sel.node === 'object' && sel.node !== null) {
     const typeName = sel.node?.type?.name;
@@ -30,6 +31,7 @@ function isImageNode(selection: unknown, imageTypeName: string): selection is No
 function isGapCursorSelection(selection: unknown): selection is GapCursor {
   if (selection instanceof GapCursor) return true;
   // Duck-typing for test environments where instanceof might fail
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sel = selection as any;
   return sel?.type === 'gapcursor' || sel?.constructor?.name === 'GapCursor';
 }
@@ -37,6 +39,7 @@ function isGapCursorSelection(selection: unknown): selection is GapCursor {
 function isTextSelection(selection: unknown): selection is TextSelection {
   if (selection instanceof TextSelection) return true;
   // Duck-typing for test environments where instanceof might fail
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sel = selection as any;
   return (
     sel?.type === 'text' ||
@@ -93,6 +96,7 @@ function canInsertParagraphAtDocPos(state: EditorState, docPos: number): boolean
  * Insert a paragraph at the specified document-level position.
  * The position must be between blocks (not inside a block).
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function insertParagraphAtDocPos(view: any, state: EditorState, docPos: number): boolean {
   // Validate docPos is within bounds
   if (docPos < 0 || docPos > state.doc.content.size) {
@@ -155,6 +159,7 @@ function insertParagraphAtDocPos(view: any, state: EditorState, docPos: number):
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getImageTypeName(state: any): string | undefined {
   return state?.schema?.nodes?.image?.name;
 }
@@ -168,6 +173,7 @@ function getImageTypeName(state: any): string | undefined {
  * - If paragraph has only this one image, delete the entire paragraph
  * - Otherwise, rebuild paragraph content without the image (and clean up hardBreaks)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function deleteSelectedImage(view: any, state: EditorState, selection: NodeSelection): boolean {
   try {
     const { from, to } = selection;
@@ -348,6 +354,7 @@ function buildDecorations(
   const decorations: Decoration[] = [];
   const selection = state.selection;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const addDecoration = (pos: number, node: any | null, className: string) => {
     if (typeof pos !== 'number') return;
     if (!node) return;
@@ -527,7 +534,9 @@ export const ImageEnterSpacing = Extension.create({
 
             const moveGapCursor = (pos: number) => {
               try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const $pos = (state as any).doc?.resolve?.(pos);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const gapCursorCtor: any = GapCursor as any;
                 const isValidGap =
                   $pos && typeof gapCursorCtor.valid === 'function' && gapCursorCtor.valid($pos);
@@ -808,7 +817,9 @@ export const ImageEnterSpacing = Extension.create({
                     try {
                       // Use index-based splitting for more reliable behavior
                       const indexInParent = $from.index();
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const beforeContent: any[] = [];
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const afterContent: any[] = [];
 
                       // Split at the index - everything before goes to beforeContent,
