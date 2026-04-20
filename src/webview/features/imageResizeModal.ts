@@ -1079,7 +1079,7 @@ function showResizeModalForLocalImage(
     if (!currentModal) return;
 
     if (document.activeElement === widthInput || document.activeElement === heightInput) {
-    return;
+      return;
     }
     // Debounce scroll - only close if scrolling persists for 100ms
     if (scrollTimeout) {

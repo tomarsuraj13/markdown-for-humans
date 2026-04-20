@@ -1458,13 +1458,13 @@ window.addEventListener('auditDocument', async () => {
 
     // Show loading toast
     const loadingToastId = showToast('Auditing document...', 'loading');
-      
+
     const issues = await runAudit(editor);
     console.log('[MD4H] Audit complete, issues found:', issues.length);
-    
+
     // Dismiss loading toast
     dismissToast(loadingToastId);
-    
+
     showAuditOverlay(editor, issues);
 
     // Apply decorations

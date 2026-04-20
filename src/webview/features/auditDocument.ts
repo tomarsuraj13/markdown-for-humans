@@ -318,7 +318,7 @@ function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
       return;
     }
     const requestId = `audit-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-   
+
     const timeout = setTimeout(() => {
       if (auditCheckCallbacks.has(requestId)) {
         auditCheckCallbacks.delete(requestId);
@@ -353,7 +353,7 @@ function checkUrlStatus(url: string): Promise<UrlCheckResult> {
         auditUrlCheckCallbacks.delete(requestId);
         resolve('timeout'); // <-- Resolve as timeout instead of false
       }
-    }, 2000); 
+    }, 2000);
 
     // Wrap the resolve to clear the timeout if it succeeds
     auditUrlCheckCallbacks.set(requestId, (reachable: boolean) => {

@@ -977,14 +977,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       const tryRequest = (method: string): Promise<number> =>
         new Promise<number>(resolve => {
           try {
-            const req = httpModule.request(
-              { ...requestOpts, method },
-              (res: any) => {
-                // Consume body so the socket is released
-                res.resume();
-                resolve(res.statusCode as number);
-              }
-            );
+            const req = httpModule.request({ ...requestOpts, method }, (res: any) => {
+              // Consume body so the socket is released
+              res.resume();
+              resolve(res.statusCode as number);
+            });
             req.on('error', () => resolve(0));
             req.on('timeout', () => {
               req.destroy();
