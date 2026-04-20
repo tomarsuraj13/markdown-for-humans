@@ -483,6 +483,7 @@ export function showImageRenameDialog(img: HTMLImageElement, vscodeApi: VsCodeAp
     closeReferencesPopover();
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getImageReferences = (window as any).getImageReferences as
     | ((path: string) => Promise<unknown>)
     | undefined;
@@ -578,6 +579,7 @@ export function showImageRenameDialog(img: HTMLImageElement, vscodeApi: VsCodeAp
     collisionBox.style.display = 'none';
     pendingOverwriteName = null;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const checkImageRename = (window as any).checkImageRename as
       | ((oldPath: string, newName: string) => Promise<unknown>)
       | undefined;
@@ -586,6 +588,7 @@ export function showImageRenameDialog(img: HTMLImageElement, vscodeApi: VsCodeAp
       renameBtn.style.opacity = '0.7';
       renameBtn.style.cursor = 'not-allowed';
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = (await checkImageRename(imagePath, sanitizedName)) as any;
         if (result && typeof result.exists === 'boolean' && result.exists === true) {
           pendingOverwriteName = sanitizedName;
@@ -642,4 +645,5 @@ export function showImageRenameDialog(img: HTMLImageElement, vscodeApi: VsCodeAp
 }
 
 // Make available globally for imageMenu.ts
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as any).showImageRenameDialog = showImageRenameDialog;

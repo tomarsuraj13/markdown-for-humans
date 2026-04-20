@@ -43,6 +43,7 @@ export function getSelectionAsMarkdown(editor: Editor): string | null {
 
     // Try to use the markdown manager from @tiptap/markdown
     // The official package exposes editor.markdown.serialize(json)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const markdownManager = (editor as any).markdown;
     if (markdownManager?.serialize) {
       // Convert temp doc to JSON and serialize

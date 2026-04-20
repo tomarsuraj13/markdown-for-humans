@@ -118,6 +118,7 @@ declare const acquireVsCodeApi: () => VsCodeApi;
 // Message type for communication between extension and webview
 interface WebviewMessage {
   type: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -470,6 +471,7 @@ function initializeEditor(initialContent: string) {
           },
           shouldAutoLink,
         }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (CustomImage as any).configure({
           allowBase64: true, // Allow base64 for preview
           HTMLAttributes: {
@@ -477,7 +479,9 @@ function initializeEditor(initialContent: string) {
           },
           // Inject the global setting here.
           // The extension will call this function whenever it needs to check the state.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           getShowImageHoverOverlay: () => (window as any).showImageHoverOverlay,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any),
         DocumentAuditExtension,
       ],
@@ -740,6 +744,7 @@ function initializeEditor(initialContent: string) {
       // External URLs
       if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
         console.log('[MD4H Webview] Sending openExternalLink message');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const vscode = (window as any).vscode;
         if (vscode && typeof vscode.postMessage === 'function') {
           vscode.postMessage({
@@ -784,6 +789,7 @@ function initializeEditor(initialContent: string) {
         e.stopPropagation();
 
         console.log('[MD4H Webview] Image link clicked, sending openImage message');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const vscode = (window as any).vscode;
         if (vscode && typeof vscode.postMessage === 'function') {
           vscode.postMessage({
@@ -798,6 +804,7 @@ function initializeEditor(initialContent: string) {
 
       // Local file links (non-image)
       console.log('[MD4H Webview] Sending openFileLink message');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const vscode = (window as any).vscode;
       if (vscode && typeof vscode.postMessage === 'function') {
         vscode.postMessage({
@@ -816,7 +823,9 @@ function initializeEditor(initialContent: string) {
     const updateLinkHandlers = () => {
       const links = editorInstance.view.dom.querySelectorAll('.markdown-link');
       links.forEach(link => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(link as any)._linkHandlerAdded) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (link as any)._linkHandlerAdded = true;
           // Handler is on parent, so this is just for marking
         }
@@ -862,13 +871,16 @@ window.addEventListener('message', (event: MessageEvent) => {
       case 'update':
         // Store skipResizeWarning setting if present
         if (typeof message.skipResizeWarning === 'boolean') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).skipResizeWarning = message.skipResizeWarning;
         }
         // Store imagePath setting if present
         if (typeof message.imagePath === 'string') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).imagePath = message.imagePath;
         }
         if (typeof message.imagePathBase === 'string') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).imagePathBase = message.imagePathBase;
         }
         // Initialize editor with first payload to seed undo history correctly
@@ -885,17 +897,21 @@ window.addEventListener('message', (event: MessageEvent) => {
       case 'settingsUpdate':
         // Update skipResizeWarning setting
         if (typeof message.skipResizeWarning === 'boolean') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).skipResizeWarning = message.skipResizeWarning;
         }
         // Update imagePath setting
         if (typeof message.imagePath === 'string') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).imagePath = message.imagePath;
         }
         if (typeof message.imagePathBase === 'string') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).imagePathBase = message.imagePathBase;
         }
         // Update showImageHoverOverlay setting
         if (typeof message.showImageHoverOverlay === 'boolean') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).showImageHoverOverlay = message.showImageHoverOverlay;
         }
         break;
@@ -909,8 +925,10 @@ window.addEventListener('message', (event: MessageEvent) => {
 
           // Cache-bust image reloads (especially important when the NodeView is recreated).
           const cacheBustMap =
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ((window as any)._imageCacheBust as Map<string, number> | undefined) ??
             new Map<string, number>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any)._imageCacheBust = cacheBustMap;
           if (typeof message.imagePath === 'string') {
             cacheBustMap.set(message.imagePath, timestamp);
@@ -1026,6 +1044,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       case 'imageWorkspaceCheck': {
         // Response to checkImageInWorkspace request
         const requestId = message.requestId as string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const callbacks = (window as any)._workspaceCheckCallbacks;
         if (callbacks && callbacks.has(requestId)) {
           const callback = callbacks.get(requestId);
@@ -1084,6 +1103,7 @@ window.addEventListener('message', (event: MessageEvent) => {
         // Response to getImageMetadata request
         const requestId = message.requestId as string;
         const metadata = message.metadata;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const callbacks = (window as any)._metadataCallbacks;
         if (callbacks && callbacks.has(requestId)) {
           const callback = callbacks.get(requestId);
@@ -1206,10 +1226,13 @@ window.addEventListener('message', (event: MessageEvent) => {
           imgElement.setAttribute('src', relativePath);
 
           // Clear pending copy flags
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           delete (imgElement as any)._pendingDownloadPlaceholderId;
 
           // If this image was pending resize after copy, show resize modal now
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if ((imgElement as any)._pendingResizeAfterDownload) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             delete (imgElement as any)._pendingResizeAfterDownload;
 
             // Wait for image to load, then show resize modal
@@ -1225,7 +1248,9 @@ window.addEventListener('message', (event: MessageEvent) => {
               imgElement.addEventListener('load', showModalAfterLoad, { once: true });
 
               // Request resolution for the new local path
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               if ((window as any).resolveImagePath) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (window as any).resolveImagePath(relativePath).then((webviewUri: string) => {
                   if (imgElement) {
                     imgElement.src = webviewUri;
@@ -1252,8 +1277,11 @@ window.addEventListener('message', (event: MessageEvent) => {
         const images = document.querySelectorAll('.markdown-image');
         for (const img of images) {
           const imgElement = img as HTMLImageElement;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if ((imgElement as any)._pendingDownloadPlaceholderId === message.placeholderId) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             delete (imgElement as any)._pendingDownloadPlaceholderId;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             delete (imgElement as any)._pendingResizeAfterDownload;
           }
         }
@@ -1580,6 +1608,7 @@ window.addEventListener('unhandledrejection', event => {
 
 // Testing hooks (not used in production UI)
 export const __testing = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setMockEditor(mockEditor: any) {
     editor = mockEditor;
   },

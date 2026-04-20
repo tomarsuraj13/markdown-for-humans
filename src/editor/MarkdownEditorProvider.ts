@@ -977,6 +977,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       const tryRequest = (method: string): Promise<number> =>
         new Promise<number>(resolve => {
           try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const req = httpModule.request({ ...requestOpts, method }, (res: any) => {
               // Consume body so the socket is released
               res.resume();
@@ -1110,7 +1111,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const fileName = message.fileName as string;
     const insertPosition = message.insertPosition as number | undefined;
 
-    console.log(`[MD4H] Handling workspace image: ${sourcePath}`);
+    console.warn(`[MD4H] Handling workspace image: ${sourcePath}`);
 
     // Get the document base path
     const basePath = this.getImageBasePath(document);
@@ -1137,7 +1138,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     // If path is invalid or image is outside workspace, copy it to workspace
     if (!isValidPath || !withinWorkspace) {
-      console.log(`[MD4H] Image is outside workspace or has invalid path, copying to workspace...`);
+      console.warn(
+        `[MD4H] Image is outside workspace or has invalid path, copying to workspace...`
+      );
 
       try {
         // Read the source image
@@ -1212,7 +1215,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           copiedRelativePath = './' + copiedRelativePath;
         }
 
-        console.log(`[MD4H] Image copied to workspace. Path: ${copiedRelativePath}`);
+        console.warn(`[MD4H] Image copied to workspace. Path: ${copiedRelativePath}`);
 
         // Extract alt text from filename (remove extension)
         const altText = fileName.replace(/\.[^.]+$/, '');
@@ -1239,7 +1242,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       relativePath = './' + relativePath;
     }
 
-    console.log(`[MD4H] Computed relative path: ${relativePath}`);
+    console.warn(`[MD4H] Computed relative path: ${relativePath}`);
 
     // Extract alt text from filename (remove extension)
     const altText = fileName.replace(/\.[^.]+$/, '');
@@ -1284,7 +1287,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
     const imagesDir = path.join(saveBasePath, imageFolderName);
 
-    console.log(`[MD4H] Saving image "${name}" to folder: ${imagesDir}`);
+    console.warn(`[MD4H] Saving image "${name}" to folder: ${imagesDir}`);
 
     try {
       // Create folder if needed
@@ -1342,7 +1345,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         relativePath = './' + relativePath;
       }
 
-      console.log(`[MD4H] Image saved successfully. Path: ${relativePath}`);
+      console.warn(`[MD4H] Image saved successfully. Path: ${relativePath}`);
 
       webview.postMessage({
         type: 'imageSaved',
@@ -1382,7 +1385,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const originalHeight = message.originalHeight as number | undefined;
     const imageData = message.imageData as string; // base64 data URL
 
-    console.log(`[MD4H] Resizing image: ${imagePath} to ${newWidth}x${newHeight}`);
+    console.warn(`[MD4H] Resizing image: ${imagePath} to ${newWidth}x${newHeight}`);
 
     try {
       // If absolute path provided (edit in place), use it directly
@@ -1438,7 +1441,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       );
 
       await vscode.workspace.fs.writeFile(vscode.Uri.file(finalBackupPath), originalData);
-      console.log(`[MD4H] Backup created: ${finalBackupPath}`);
+      console.warn(`[MD4H] Backup created: ${finalBackupPath}`);
 
       // Convert base64 data URL to buffer
       const base64Data = imageData.split(',')[1]; // Remove data:image/png;base64, prefix
@@ -1446,7 +1449,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
       // Overwrite the original file in place (path remains unchanged).
       await vscode.workspace.fs.writeFile(imageUri, buffer);
-      console.log(`[MD4H] Image resized in-place: ${absolutePath}`);
+      console.warn(`[MD4H] Image resized in-place: ${absolutePath}`);
 
       const relativeBackupPath = path.relative(basePath, finalBackupPath).replace(/\\/g, '/');
       const normalizedBackupPath =
@@ -1487,7 +1490,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const imagePath = message.imagePath as string;
     const backupPath = message.backupPath as string;
 
-    console.log(`[MD4H] Undoing resize: restoring ${imagePath} from ${backupPath}`);
+    console.warn(`[MD4H] Undoing resize: restoring ${imagePath} from ${backupPath}`);
 
     try {
       // Resolve paths using base path
@@ -1513,7 +1516,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       // Restore from backup
       const backupData = await vscode.workspace.fs.readFile(backupUri);
       await vscode.workspace.fs.writeFile(imageUri, backupData);
-      console.log(`[MD4H] Image restored from backup`);
+      console.warn(`[MD4H] Image restored from backup`);
 
       webview.postMessage({
         type: 'imageUndoResized',
@@ -1546,7 +1549,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const newHeight = message.newHeight as number;
     const imageData = message.imageData as string;
 
-    console.log(`[MD4H] Redoing resize: ${imagePath} to ${newWidth}x${newHeight}`);
+    console.warn(`[MD4H] Redoing resize: ${imagePath} to ${newWidth}x${newHeight}`);
 
     try {
       // Resolve image path using base path
@@ -1564,7 +1567,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
       // Save resized image
       await vscode.workspace.fs.writeFile(imageUri, buffer);
-      console.log(`[MD4H] Image resize redone successfully`);
+      console.warn(`[MD4H] Image resize redone successfully`);
 
       webview.postMessage({
         type: 'imageRedoResized',
@@ -1896,7 +1899,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const updateAllReferences = (message.updateAllReferences as boolean) ?? true;
     const allowOverwrite = (message.allowOverwrite as boolean) ?? false;
 
-    console.log(`[MD4H] Renaming image: ${oldPath} to ${newName}`);
+    console.warn(`[MD4H] Renaming image: ${oldPath} to ${newName}`);
 
     try {
       // Resolve the old path
@@ -1959,7 +1962,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
       // Rename the file
       await vscode.workspace.fs.rename(oldUri, newUri);
-      console.log(`[MD4H] File renamed to: ${newFilename}`);
+      console.warn(`[MD4H] File renamed to: ${newFilename}`);
 
       // Calculate new relative path for markdown
       const newRelativePath = path.relative(basePath, absoluteNewPath).replace(/\\/g, '/');
@@ -2306,10 +2309,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }) || { all: true };
       const requestId = (message.requestId as number) || 0;
 
-      console.debug('[MD4H] File search request:', { query, filters, requestId });
+      console.warn('[MD4H] File search request:', { query, filters, requestId });
 
       if (!query || query.trim().length < 1) {
-        console.debug('[MD4H] Empty query, returning empty results');
+        console.warn('[MD4H] Empty query, returning empty results');
         webview.postMessage({
           type: 'fileSearchResults',
           results: [],
@@ -2332,7 +2335,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       // More permissive exclude pattern - only exclude truly unnecessary directories
       const excludePattern =
         '{**/node_modules/**,**/.git/**,**/.vscode/**,**/dist/**,**/build/**,**/.next/**,**/coverage/**}';
-      console.debug('[MD4H] Searching files with pattern:', excludePattern);
+      console.warn('[MD4H] Searching files with pattern:', excludePattern);
 
       // Use a more conservative limit (2000) to prevent memory pressure in massive repositories
       // while still providing enough results for most users.
@@ -2341,7 +2344,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         excludePattern,
         MarkdownEditorProvider.MAX_FILE_SEARCH_RESULTS
       );
-      console.debug('[MD4H] Found', allFiles.length, 'files total');
+      console.warn('[MD4H] Found', allFiles.length, 'files total');
 
       let filteredFiles = allFiles;
       if (!filters.all) {
@@ -2363,7 +2366,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const ext = path.extname(uri.fsPath).toLowerCase();
           return allowedExtensions.has(ext);
         });
-        console.debug('[MD4H] After filter:', filteredFiles.length, 'files');
+        console.warn('[MD4H] After filter:', filteredFiles.length, 'files');
       }
 
       const queryLower = query.toLowerCase().trim();
@@ -2405,7 +2408,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         return false;
       });
 
-      console.log('[MD4H] Found', matchingFiles.length, 'matching files');
+      console.warn('[MD4H] Found', matchingFiles.length, 'matching files');
 
       // Sort results: exact filename matches first, then path matches, then partial matches
       const sortedFiles = matchingFiles.sort((a, b) => {
@@ -2451,7 +2454,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         };
       });
 
-      console.log('[MD4H] Sending', results.length, 'results to webview');
+      console.warn('[MD4H] Sending', results.length, 'results to webview');
       webview.postMessage({
         type: 'fileSearchResults',
         results,
@@ -2494,7 +2497,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   }): Promise<void> {
     try {
       const url = (message.url as string) || '';
-      console.log('[MD4H] handleOpenExternalLink called with URL:', url);
+      console.warn('[MD4H] handleOpenExternalLink called with URL:', url);
 
       if (!url) {
         console.warn('[MD4H] No URL provided for external link');
@@ -2507,9 +2510,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
 
-      console.log('[MD4H] Opening external link:', url);
+      console.warn('[MD4H] Opening external link:', url);
       await vscode.env.openExternal(vscode.Uri.parse(url));
-      console.log('[MD4H] Successfully opened external link');
+      console.warn('[MD4H] Successfully opened external link');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[MD4H] Failed to open external link:', errorMessage, error);
@@ -2530,7 +2533,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       return;
     }
 
-    console.log('[MD4H] handleOpenImage called with path:', imagePath);
+    console.warn('[MD4H] handleOpenImage called with path:', imagePath);
 
     // Normalize path: remove ./ prefix if present for path resolution
     const normalizedPath = imagePath.startsWith('./') ? imagePath.slice(2) : imagePath;
@@ -2551,16 +2554,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     let imageFullPath = path.resolve(baseDir, normalizedPath);
     let imageUri = vscode.Uri.file(imageFullPath);
-    console.log('[MD4H] Trying document-relative path:', imageFullPath);
+    console.warn('[MD4H] Trying document-relative path:', imageFullPath);
 
     // Check if file exists at document-relative path
     let fileExists = false;
     try {
       await vscode.workspace.fs.stat(imageUri);
       fileExists = true;
-      console.log('[MD4H] Image found at document-relative path');
+      console.warn('[MD4H] Image found at document-relative path');
     } catch {
-      console.log('[MD4H] Image not found at document-relative path, trying workspace root');
+      console.warn('[MD4H] Image not found at document-relative path, trying workspace root');
 
       // Fallback: try workspace root
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -2568,14 +2571,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         const workspacePath = workspaceFolder.uri.fsPath;
         imageFullPath = path.resolve(workspacePath, normalizedPath);
         imageUri = vscode.Uri.file(imageFullPath);
-        console.log('[MD4H] Trying workspace-relative path:', imageFullPath);
+        console.warn('[MD4H] Trying workspace-relative path:', imageFullPath);
 
         try {
           await vscode.workspace.fs.stat(imageUri);
           fileExists = true;
-          console.log('[MD4H] Image found at workspace-relative path');
+          console.warn('[MD4H] Image found at workspace-relative path');
         } catch {
-          console.log('[MD4H] Image not found at workspace-relative path either');
+          console.warn('[MD4H] Image not found at workspace-relative path either');
         }
       }
     }
@@ -2588,9 +2591,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     try {
-      console.log('[MD4H] Opening image:', imageUri.fsPath);
+      console.warn('[MD4H] Opening image:', imageUri.fsPath);
       await vscode.commands.executeCommand('vscode.open', imageUri);
-      console.log('[MD4H] Successfully opened image');
+      console.warn('[MD4H] Successfully opened image');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('[MD4H] Failed to open image:', errorMessage, err);
@@ -2607,7 +2610,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     try {
       const filePath = (message.path as string) || '';
-      console.log('[MD4H] handleOpenFileLink called with path:', filePath);
+      console.warn('[MD4H] handleOpenFileLink called with path:', filePath);
 
       if (!filePath) {
         console.warn('[MD4H] No path provided for file link');
@@ -2621,14 +2624,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       const normalizedFilePath = filePath.startsWith('./') ? filePath.slice(2) : filePath;
       const absolutePath = path.resolve(basePath, normalizedFilePath);
       let fileUri = vscode.Uri.file(absolutePath);
-      console.log('[MD4H] Resolved file URI (document-relative):', fileUri.fsPath);
+      console.warn('[MD4H] Resolved file URI (document-relative):', fileUri.fsPath);
 
       // Check if file exists
       let fileExists = false;
       try {
         await vscode.workspace.fs.stat(fileUri);
         fileExists = true;
-        console.log('[MD4H] File exists (document-relative):', fileUri.fsPath);
+        console.warn('[MD4H] File exists (document-relative):', fileUri.fsPath);
       } catch {
         // File doesn't exist, try to find it in workspace
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -2637,15 +2640,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           const workspacePath = workspaceFolders[0].uri.fsPath;
           // Use normalized path (already normalized above)
           const workspaceFileUri = vscode.Uri.file(path.resolve(workspacePath, normalizedFilePath));
-          console.log('[MD4H] Trying workspace-relative path:', workspaceFileUri.fsPath);
+          console.warn('[MD4H] Trying workspace-relative path:', workspaceFileUri.fsPath);
           try {
             await vscode.workspace.fs.stat(workspaceFileUri);
             fileUri = workspaceFileUri;
             fileExists = true;
-            console.log('[MD4H] File exists (workspace-relative):', fileUri.fsPath);
+            console.warn('[MD4H] File exists (workspace-relative):', fileUri.fsPath);
           } catch {
             // Not found in workspace either
-            console.log('[MD4H] File not found in workspace-relative path');
+            console.warn('[MD4H] File not found in workspace-relative path');
           }
         }
       }
@@ -2672,15 +2675,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       ];
       const fileExtension = path.extname(fileUri.fsPath).toLowerCase();
       const isImage = imageExtensions.includes(fileExtension);
-      console.log('[MD4H] File extension:', fileExtension, '| Is image:', isImage);
+      console.warn('[MD4H] File extension:', fileExtension, '| Is image:', isImage);
 
       if (isImage) {
         // For image files, use vscode.open command directly
         // This automatically opens images in VS Code's image preview
-        console.log('[MD4H] Attempting to open image file with vscode.open command');
+        console.warn('[MD4H] Attempting to open image file with vscode.open command');
         try {
           await vscode.commands.executeCommand('vscode.open', fileUri);
-          console.log('[MD4H] Successfully opened image file:', fileUri.fsPath);
+          console.warn('[MD4H] Successfully opened image file:', fileUri.fsPath);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[MD4H] Failed to open image file:', errorMessage, error);
@@ -2688,20 +2691,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         }
       } else {
         // For text files, use openTextDocument
-        console.log('[MD4H] Attempting to open text file with openTextDocument');
+        console.warn('[MD4H] Attempting to open text file with openTextDocument');
         try {
           const doc = await vscode.workspace.openTextDocument(fileUri);
           await vscode.window.showTextDocument(doc);
-          console.log('[MD4H] Successfully opened file link:', fileUri.fsPath);
+          console.warn('[MD4H] Successfully opened file link:', fileUri.fsPath);
         } catch (error) {
           // If it's not a text file, try vscode.open command as fallback
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.log('[MD4H] openTextDocument failed, error:', errorMessage);
+          console.warn('[MD4H] openTextDocument failed, error:', errorMessage);
           if (errorMessage.includes('Binary') || errorMessage.includes('binary')) {
-            console.log('[MD4H] File is binary, trying vscode.open command as fallback');
+            console.warn('[MD4H] File is binary, trying vscode.open command as fallback');
             try {
               await vscode.commands.executeCommand('vscode.open', fileUri);
-              console.log('[MD4H] Opened binary file using vscode.open command');
+              console.warn('[MD4H] Opened binary file using vscode.open command');
             } catch (fallbackError) {
               console.error('[MD4H] Failed to open file:', fallbackError);
               vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
@@ -2730,7 +2733,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const placeholderId = message.placeholderId as string;
     const targetFolder = (message.targetFolder as string) || 'images';
 
-    console.log(`[MD4H] Copying local image to workspace: ${absolutePath}`);
+    console.warn(`[MD4H] Copying local image to workspace: ${absolutePath}`);
 
     try {
       // Read the source image
@@ -2805,7 +2808,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         relativePath = './' + relativePath;
       }
 
-      console.log(`[MD4H] Local image copied successfully. Path: ${relativePath}`);
+      console.warn(`[MD4H] Local image copied successfully. Path: ${relativePath}`);
 
       webview.postMessage({
         type: 'localImageCopied',
@@ -2838,7 +2841,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     try {
       const config = vscode.workspace.getConfiguration();
       await config.update(key, value, vscode.ConfigurationTarget.Global);
-      console.log(`[MD4H] Setting updated: ${key} = ${value}`);
+      console.warn(`[MD4H] Setting updated: ${key} = ${value}`);
 
       // Immediately notify webview of the setting change
       // This ensures the setting takes effect right away without waiting for next update
