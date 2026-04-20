@@ -164,6 +164,13 @@ export const Mermaid = Node.create({
         }
 
         try {
+          const theme = isDarkMode() ? 'dark' : 'default';
+          mermaid.initialize({
+            startOnLoad: false,
+            theme,
+            securityLevel: 'strict',
+            fontFamily: 'inherit',
+          });
           // Clear previous content to prevent duplicates
           renderElement.innerHTML = '';
 

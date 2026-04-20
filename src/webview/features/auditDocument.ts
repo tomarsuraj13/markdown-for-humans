@@ -146,6 +146,7 @@ export async function runAudit(editor: Editor): Promise<AuditIssue[]> {
     }
 
     if (node.marks && node.marks.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const linkMark = node.marks.find((m: any) => m.type.name === 'link');
       if (linkMark) {
         const href = linkMark.attrs.href;
@@ -268,6 +269,7 @@ const auditPickFileCallbacks = new Map<string, (path: string | null) => void>();
  */
 export function requestFilePickerForIssue(fileType: AuditFileType): Promise<string | null> {
   return new Promise(resolve => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const vscodeApi = (window as any).vscode;
     if (!vscodeApi) {
       resolve(null);
@@ -312,13 +314,14 @@ export function handleAuditPickFileResult(requestId: string, selectedPath: strin
 
 function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
   return new Promise(resolve => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const vscodeApi = (window as any).vscode;
     if (!vscodeApi) {
       resolve({ exists: true });
       return;
     }
     const requestId = `audit-check-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-   
+
     const timeout = setTimeout(() => {
       if (auditCheckCallbacks.has(requestId)) {
         auditCheckCallbacks.delete(requestId);
@@ -340,6 +343,7 @@ function checkFileExistence(relativePath: string): Promise<FileCheckResult> {
 }
 
 function checkUrlStatus(url: string): Promise<UrlCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const vscodeApi = (window as any).vscode;
   if (!vscodeApi) {
     return Promise.resolve('unreachable');
@@ -353,7 +357,7 @@ function checkUrlStatus(url: string): Promise<UrlCheckResult> {
         auditUrlCheckCallbacks.delete(requestId);
         resolve('timeout'); // <-- Resolve as timeout instead of false
       }
-    }, 2000); 
+    }, 2000);
 
     // Wrap the resolve to clear the timeout if it succeeds
     auditUrlCheckCallbacks.set(requestId, (reachable: boolean) => {

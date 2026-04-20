@@ -231,9 +231,11 @@ export async function showImageResizeModal(
   ): Promise<WorkspaceCheckResult> => {
     const requestId = `check-ws-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const callbacks: Map<string, (result: WorkspaceCheckResult) => void> =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((window as any)._workspaceCheckCallbacks as
         | Map<string, (result: WorkspaceCheckResult) => void>
         | undefined) ?? new Map();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any)._workspaceCheckCallbacks = callbacks;
 
     return new Promise(resolve => {
@@ -297,12 +299,15 @@ export async function showImageResizeModal(
       }
 
       // Store placeholder ID and image reference for when copy completes
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (img as any)._pendingDownloadPlaceholderId = placeholderId;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (img as any)._pendingResizeAfterDownload = true;
       return;
     } else {
       // Edit in place - resize the original file directly
       // We'll use the absolute path for resize
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (img as any)._absolutePath = workspaceCheck.absolutePath;
       showResizeModalForLocalImage(img, editor, vscodeApi);
       return;
@@ -797,9 +802,11 @@ function showResizeModalForLocalImage(
   });
 
   // Request references once per modal open.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const absolutePath = (img as any)._absolutePath;
   const imagePathForReferences =
     absolutePath || img.getAttribute('data-markdown-src') || img.getAttribute('src') || '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getImageReferences = (window as any).getImageReferences as
     | ((path: string) => Promise<unknown>)
     | undefined;
@@ -984,6 +991,7 @@ function showResizeModalForLocalImage(
     // Show warning dialog (check setting first)
     // Explicitly check if skipResizeWarning is true (not just truthy)
     // undefined or false should both show the warning
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const skipWarning = (window as any).skipResizeWarning === true;
     if (!skipWarning) {
       const warning = await showImageResizeWarning();
@@ -996,6 +1004,7 @@ function showResizeModalForLocalImage(
       // Update setting if "never ask again" was checked
       if (warning.neverAskAgain) {
         // Update local variable immediately so it takes effect right away
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).skipResizeWarning = true;
 
         // Also save to VS Code settings (use captured reference)
@@ -1011,10 +1020,12 @@ function showResizeModalForLocalImage(
     try {
       const resizedData = await resizeImageWithCanvas(img, newWidth, newHeight);
       // Store the exact resized payload so undo/redo can reapply without re-encoding.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (img as any)._pendingResizeDataUrl = resizedData;
 
       // Get image path from data-markdown-src or src
       // If image is outside workspace (edit in place), use absolute path
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const absolutePath = (img as any)._absolutePath;
       const imagePath =
         absolutePath || img.getAttribute('data-markdown-src') || img.getAttribute('src') || '';
@@ -1078,6 +1089,9 @@ function showResizeModalForLocalImage(
   const handleScroll = () => {
     if (!currentModal) return;
 
+    if (document.activeElement === widthInput || document.activeElement === heightInput) {
+      return;
+    }
     // Debounce scroll - only close if scrolling persists for 100ms
     if (scrollTimeout) {
       clearTimeout(scrollTimeout);
@@ -1091,9 +1105,13 @@ function showResizeModalForLocalImage(
   window.addEventListener('scroll', handleScroll, true);
 
   // Store all handlers for cleanup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (panel as any)._keypressHandler = handleKeypress;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (panel as any)._clickHandler = handleDocumentClick;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (panel as any)._scrollHandler = handleScroll;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (panel as any)._scrollTimeout = scrollTimeout;
 
   // Focus width input
@@ -1109,26 +1127,38 @@ export function hideImageResizeModal(): void {
     const panel = currentModal.querySelector('.image-resize-modal-panel') as HTMLElement;
     if (panel) {
       // Clear scroll timeout
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((panel as any)._scrollTimeout) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         clearTimeout((panel as any)._scrollTimeout);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (panel as any)._scrollTimeout = null;
       }
 
       // Remove keypress handler (consolidated key handler)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((panel as any)._keypressHandler) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         document.removeEventListener('keydown', (panel as any)._keypressHandler);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (panel as any)._keypressHandler = null;
       }
 
       // Remove click handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((panel as any)._clickHandler) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         document.removeEventListener('click', (panel as any)._clickHandler, true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (panel as any)._clickHandler = null;
       }
 
       // Remove scroll handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((panel as any)._scrollHandler) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         window.removeEventListener('scroll', (panel as any)._scrollHandler, true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (panel as any)._scrollHandler = null;
       }
     }
@@ -1151,7 +1181,9 @@ export function showResizeModalAfterDownload(
   vscodeApi: VsCodeApi
 ): void {
   // Clear pending download flags
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (img as any)._pendingDownloadPlaceholderId;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (img as any)._pendingResizeAfterDownload;
 
   // Now show resize modal (image is now local)
@@ -1167,8 +1199,10 @@ export function showResizeModalAfterDownload(
 export function handleImageResized(backupPath: string, img: HTMLImageElement): void {
   const state = getResizeState(img);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingResizeDataUrl = (img as any)._pendingResizeDataUrl;
   if (typeof pendingResizeDataUrl === 'string') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (img as any)._pendingResizeDataUrl;
   }
 
