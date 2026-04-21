@@ -312,7 +312,7 @@ export const CustomImage = Image.extend({
             wrapper.classList.add('image-hover-active');
             // Show metadata footer
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const vscodeApi = (window as any).vscode;
+            const vscodeApi = (window as any).vscode;
             if (vscodeApi) {
               showImageMetadataFooter(dom, wrapper, vscodeApi);
             }
