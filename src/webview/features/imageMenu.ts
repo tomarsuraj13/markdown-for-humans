@@ -151,13 +151,17 @@ export function showImageMenu(
       if (action === 'resize') {
         hideImageMenu(menu);
         // Open resize modal
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((window as any).setupImageResize) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).setupImageResize(img, editor, vscodeApi);
         }
       } else if (action === 'rename') {
         hideImageMenu(menu);
         // Open rename dialog
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((window as any).showImageRenameDialog) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).showImageRenameDialog(img, vscodeApi);
         } else {
           console.warn('[MD4H] Rename dialog not available yet');
@@ -166,7 +170,9 @@ export function showImageMenu(
         hideImageMenu(menu);
         // Get image path from data-markdown-src or src attribute
         const imagePath = img.getAttribute('data-markdown-src') || img.getAttribute('src') || '';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (imagePath && vscodeApi && typeof (vscodeApi as any).postMessage === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (vscodeApi as any).postMessage({
             type: 'revealImageInOS',
             imagePath: imagePath,
@@ -176,7 +182,9 @@ export function showImageMenu(
         hideImageMenu(menu);
         // Get image path from data-markdown-src or src attribute
         const imagePath = img.getAttribute('data-markdown-src') || img.getAttribute('src') || '';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (imagePath && vscodeApi && typeof (vscodeApi as any).postMessage === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (vscodeApi as any).postMessage({
             type: 'revealImageInExplorer',
             imagePath: imagePath,
@@ -233,6 +241,7 @@ export function showImageMenu(
   };
 
   // Store handlers for cleanup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (menu as any)._handlers = {
     menuClick: handleMenuClick,
     keyDown: handleKeyDown,
@@ -264,11 +273,13 @@ export function hideImageMenu(menu: HTMLElement): void {
   }
 
   // Clean up event handlers
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handlers = (menu as any)._handlers;
   if (handlers) {
     menu.removeEventListener('click', handlers.menuClick);
     menu.removeEventListener('keydown', handlers.keyDown);
     document.removeEventListener('click', handlers.clickOutside, { capture: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (menu as any)._handlers;
   }
 

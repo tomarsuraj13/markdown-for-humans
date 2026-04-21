@@ -114,16 +114,20 @@ export const GitHubAlerts = Node.create({
     }
 
     // Get child tokens (paragraphs, etc.)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const childTokens = Array.isArray((token as any).tokens)
-      ? JSON.parse(JSON.stringify((token as any).tokens))
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        JSON.parse(JSON.stringify((token as any).tokens))
       : [];
 
     // Remove the alert marker from the first paragraph if present
     if (
       childTokens.length > 0 &&
       childTokens[0].type === 'paragraph' &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       Array.isArray((childTokens[0] as any).tokens)
     ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const paragraphTokens = (childTokens[0] as any).tokens as any[];
       const firstInline = paragraphTokens[0];
       if (firstInline && firstInline.type === 'text') {
@@ -268,6 +272,7 @@ export const GitHubAlerts = Node.create({
 
           // CRITICAL FIX: Process nodes in REVERSE order (from end to start)
           // This ensures position offsets remain valid after each replacement
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const nodesToConvert: Array<{ pos: number; node: any; alertType: AlertType }> = [];
 
           newState.doc.descendants((node, pos) => {

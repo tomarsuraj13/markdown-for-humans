@@ -97,9 +97,7 @@ export const HtmlPreservingTable = Table.extend({
       })
       .join('\n');
 
-    const tableOpenTag = className
-      ? `<table class="${escapeHtml(className)}">`
-      : '<table>';
+    const tableOpenTag = className ? `<table class="${escapeHtml(className)}">` : '<table>';
 
     return `${tableOpenTag}\n${rowHtml}\n</table>`;
   },

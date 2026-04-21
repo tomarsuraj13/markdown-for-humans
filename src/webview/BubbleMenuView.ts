@@ -624,8 +624,8 @@ export function createFormattingToolbar(editor: Editor): HTMLElement {
         window.dispatchEvent(new CustomEvent('auditDocument'));
       },
       // Now remains active while the loading toast is visible OR the overlay is open
-      isActive: () => 
-        document.getElementById('audit-overlay')?.classList.contains('visible') || 
+      isActive: () =>
+        document.getElementById('audit-overlay')?.classList.contains('visible') ||
         document.querySelector('.toast-loading') !== null,
       className: 'audit-button',
     },

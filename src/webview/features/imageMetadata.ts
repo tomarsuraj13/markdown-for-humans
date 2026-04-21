@@ -159,7 +159,9 @@ export function getImageMetadata(
     const requestId = `metadata-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     // Store callback
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any)._metadataCallbacks = (window as any)._metadataCallbacks || new Map();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any)._metadataCallbacks.set(requestId, (metadata: ImageMetadata | null) => {
       if (metadata) {
         // Preserve existing dimensions if they were set (e.g., from resize)
@@ -185,6 +187,7 @@ export function getImageMetadata(
 
     // Timeout after 5 seconds
     setTimeout(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const callbacks = (window as any)._metadataCallbacks;
       if (callbacks && callbacks.has(requestId)) {
         callbacks.delete(requestId);
@@ -272,6 +275,7 @@ export function showImageMetadataFooter(
   vscodeApi: VsCodeApi
 ): void {
   // Check if hover overlay is disabled
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!(window as any).showImageHoverOverlay) {
     return;
   }

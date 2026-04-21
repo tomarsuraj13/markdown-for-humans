@@ -26,6 +26,7 @@ export async function confirmImageDrop(
   fileCount: number,
   defaultFolder: string = 'images'
 ): Promise<ImageDropOptions | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const imagePathBase = (window as any).imagePathBase as string | undefined;
   const pathBaseLabel =
     imagePathBase === 'workspaceFolder'
@@ -190,6 +191,7 @@ export function setRememberedFolder(folder: string | null): void {
  * Falls back to 'images' if setting is not available
  */
 export function getDefaultImagePath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const imagePath = (window as any).imagePath;
   return imagePath !== undefined && imagePath !== null ? imagePath : 'images';
 }

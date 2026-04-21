@@ -331,7 +331,7 @@ function buildSuggestionPills(suggestions: string[]): HTMLElement {
   return container;
 }
 
-const IMAGE_EXTENSIONS = /\.(bmp|gif|jpe?g|png|webp|avif|svg)([\?#].*)?$/i;
+const IMAGE_EXTENSIONS = /\.(bmp|gif|jpe?g|png|webp|avif|svg)([?#].*)?$/i;
 const PREVIEW_HIDE_DELAY_MS = 120;
 
 function isImageSuggestion(path: string): boolean {

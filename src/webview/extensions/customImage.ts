@@ -36,6 +36,7 @@ type CustomImageOptions = ImageOptions & {
 };
 
 function getImageCacheBustTimestamp(markdownPath: string): number | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const maybeMap = (window as any)?._imageCacheBust;
   if (!(maybeMap instanceof Map)) {
     return null;
@@ -258,7 +259,9 @@ export const CustomImage = Image.extend({
 
         // Request resolution (needs vscode API access)
         // This will be done via a global function
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((window as any).resolveImagePath) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).resolveImagePath(pathToResolve).then((webviewUri: string) => {
             dom.src = applyCacheBust(webviewUri, cacheBustTimestamp);
             if (node.attrs.alt) {
@@ -308,7 +311,8 @@ export const CustomImage = Image.extend({
           if (isHoverOverlayEnabled()) {
             wrapper.classList.add('image-hover-active');
             // Show metadata footer
-            const vscodeApi = (window as any).vscode;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const vscodeApi = (window as any).vscode;
             if (vscodeApi) {
               showImageMetadataFooter(dom, wrapper, vscodeApi);
             }
@@ -339,6 +343,7 @@ export const CustomImage = Image.extend({
       menuButton.addEventListener('click', e => {
         e.preventDefault();
         e.stopPropagation();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const vscodeApi = (window as any).vscode;
         if (menu.style.display === 'none') {
           showImageMenu(menu, menuButton, dom, editor, vscodeApi);
