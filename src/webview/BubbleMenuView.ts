@@ -598,7 +598,7 @@ export function createFormattingToolbar(editor: Editor): HTMLElement {
       type: 'button',
       label: 'Copy AI Ref',
       title: 'Copy as AI Context',
-      icon: { name: 'mention', fallback: '@' },
+      icon: { name: 'sparkle', fallback: '✨' },
       action: () => {
         window.dispatchEvent(new CustomEvent('copyAiContextRef'));
       },
