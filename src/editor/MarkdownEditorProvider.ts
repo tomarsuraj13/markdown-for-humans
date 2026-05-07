@@ -392,7 +392,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     );
 
     // Track active panel
-    setActiveWebviewPanel(webviewPanel);
+    setActiveWebviewPanel(webviewPanel, document);
 
     // Send initial content to webview
     this.updateWebview(document, webviewPanel.webview);
@@ -403,7 +403,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         e.affectsConfiguration('markdownForHumans.imageResize.skipWarning') ||
         e.affectsConfiguration('markdownForHumans.imagePath') ||
         e.affectsConfiguration('markdownForHumans.imagePathBase') ||
-        e.affectsConfiguration('markdownForHumans.imagePreview.hover.enabled')
+        e.affectsConfiguration('markdownForHumans.imagePreview.hover.enabled') ||
+        e.affectsConfiguration('markdownForHumans.enableMath')
       ) {
         const config = vscode.workspace.getConfiguration();
         const skipWarning = config.get<boolean>('markdownForHumans.imageResize.skipWarning', false);
@@ -416,19 +417,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePreview.hover.enabled',
           true
         );
+        const enableMath = config.get<boolean>('markdownForHumans.enableMath', true);
         webviewPanel.webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
           imagePath: imagePath,
           imagePathBase: imagePathBase,
           showImageHoverOverlay: showImageHoverOverlay,
+          enableMath: enableMath,
         });
       }
     });
 
     webviewPanel.onDidChangeViewState(() => {
       if (webviewPanel.active) {
-        setActiveWebviewPanel(webviewPanel);
+        setActiveWebviewPanel(webviewPanel, document);
       } else if (getActiveWebviewPanel() === webviewPanel) {
         setActiveWebviewPanel(undefined);
       }
@@ -487,6 +490,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       'markdownForHumans.imagePreview.hover.enabled',
       true
     );
+    const enableMath = config.get<boolean>('markdownForHumans.enableMath', true);
 
     webview.postMessage({
       type: 'update',
@@ -495,6 +499,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       imagePath: imagePath,
       imagePathBase: imagePathBase,
       showImageHoverOverlay: showImageHoverOverlay,
+      enableMath: enableMath,
     });
   }
 
@@ -530,12 +535,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           'markdownForHumans.imagePreview.hover.enabled',
           true
         );
+        const enableMath = config.get<boolean>('markdownForHumans.enableMath', true);
         webview.postMessage({
           type: 'settingsUpdate',
           skipResizeWarning: skipWarning,
           imagePath: imagePath,
           imagePathBase: imagePathBase,
           showImageHoverOverlay: showImageHoverOverlay,
+          enableMath: enableMath,
         });
         break;
       }

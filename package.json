@@ -195,6 +195,11 @@
           "default": true,
           "description": "Enable the image hover overlay that shades images and displays metadata (resolution, file size, etc.) on hover.",
           "scope": "application"
+        },
+        "markdownForHumans.enableMath": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render LaTeX math expressions using KaTeX. Use $...$ for inline math and $$...$$ for display math. Toggling this setting requires reopening the editor."
         }
       }
     }
