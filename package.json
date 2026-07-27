@@ -239,6 +239,12 @@
           "type": "boolean",
           "default": true,
           "description": "Render LaTeX math expressions using KaTeX. Use $...$ for inline math and $$...$$ for display math. Toggling this setting requires reopening the editor."
+        },
+        "markdownForHumans.autoSave.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically save the file a short delay after you stop typing in this editor, independent of VS Code's own files.autoSave setting. Off by default: with this disabled, the editor's original behavior applies (an explicit Cmd/Ctrl+S, or VS Code's own files.autoSave if you have that configured).",
+          "scope": "application"
         }
       }
     }
