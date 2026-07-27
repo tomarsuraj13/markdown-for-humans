@@ -210,6 +210,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       paragraphSpacingBefore: 0,
       paragraphSpacingAfter: 0,
       zoom: 100,
+      formattingShortcutsEnabled: true,
       enableMath: true,
     });
   });
@@ -254,6 +255,7 @@ describe('MarkdownEditorProvider undo/redo safety', () => {
       paragraphSpacingBefore: 0,
       paragraphSpacingAfter: 0,
       zoom: 100,
+      formattingShortcutsEnabled: true,
       enableMath: true,
     });
 

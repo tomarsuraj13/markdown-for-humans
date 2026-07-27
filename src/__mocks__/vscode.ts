@@ -75,6 +75,9 @@ export const window = {
   }),
   showSaveDialog: jest.fn(),
   showOpenDialog: jest.fn(),
+  activeColorTheme: { kind: 2 }, // ColorThemeKind.Dark
+  onDidChangeActiveColorTheme: jest.fn(() => ({ dispose: jest.fn() })),
+  setStatusBarMessage: jest.fn(() => ({ dispose: jest.fn() })),
 };
 
 // Mock workspace API

@@ -246,6 +246,10 @@ let aiContextSessionSkipSave = false;
 // kept in sync via `update` and `settingsUpdate` messages from the host.
 let aiContextSkipSaveWarningSetting = false;
 let blankLineMode: BlankLineMode = 'strip';
+// Mirrors `markdownForHumans.formattingShortcuts.enabled`. When false, the
+// editor stops intercepting Cmd/Ctrl+B/I/U so those chords reach VS Code's own
+// keybindings instead of toggling bold/italic/underline in-editor.
+let formattingShortcutsEnabled = true;
 
 // Pending document-dirty queries, keyed by requestId. The host replies with
 // `documentDirtyResponse`; we look up the resolver here.
@@ -669,6 +673,15 @@ function initializeEditor(initialContent: string) {
           class: 'markdown-editor',
           spellcheck: 'true',
         },
+        // Runs before TipTap's own keymaps (StarterKit binds Mod-b/i/u), which
+        // would otherwise apply formatting even with the setting disabled while
+        // the chord simultaneously reaches VS Code — e.g. Ctrl+B toggling the
+        // sidebar AND bolding text. Returning true swallows the keymap without
+        // stopping propagation, so VS Code still receives the chord.
+        handleKeyDown: (_view, event) => {
+          const isMod = event.metaKey || event.ctrlKey;
+          return shouldSuppressFormattingShortcut(event.key, isMod, formattingShortcutsEnabled);
+        },
         // Prevent default image drop handling - let our custom handler manage it
         handleDrop: (_view, event, _slice, _moved) => {
           const dt = event.dataTransfer;
@@ -860,13 +873,7 @@ function initializeEditor(initialContent: string) {
 
       // Prevent VS Code from handling markdown formatting shortcuts
       // TipTap will handle these natively
-      const formattingShortcuts = [
-        'b', // Bold
-        'i', // Italic
-        'u', // Underline (some editors)
-      ];
-
-      if (isMod && formattingShortcuts.includes(e.key.toLowerCase())) {
+      if (shouldInterceptFormattingShortcut(e.key, isMod, formattingShortcutsEnabled)) {
         e.stopPropagation(); // Stop event from reaching VS Code
         // TipTap will handle the formatting
         return;
@@ -1877,9 +1884,102 @@ function applyZoomLevel(percent: number) {
     );
   }
 }
+// Editor theme override.
+//
+// When the requested direction already matches VS Code's active appearance, no
+// class is added and the editor inherits the real live theme (so "Always dark"
+// on a dark VS Code looks exactly like the user's actual dark theme); the
+// synthetic palette is applied only when forcing the opposite direction.
+// 'vscode' always inherits.
+//
+// The class goes on BOTH <html> and <body>:
+//  - <body> carries the --vscode-* variable overrides (they win there via
+//    inheritance; VS Code sets those vars inline on <html>, so a class rule on
+//    <html> could not override them) and satisfies the syntax-highlight guards
+//    (.vscode-dark:not(.mdfh-force-light)) that key off the body class.
+//  - <html> paints the overscroll/page background with a literal color so the
+//    area around the editor matches (see editor.css).
+//
+// Self-healing: VS Code reassigns body.className (not classList.add) during its
+// theme handshake, which can wipe our class right after the first apply. A
+// MutationObserver re-asserts the desired state whenever the class attribute
+// changes. reconcile only mutates when out of sync, so it settles in one pass
+// and cannot loop.
+let lastThemeSetting: EditorThemeSetting = 'vscode';
+let lastVscodeIsDark = false;
+let themeClassObserver: MutationObserver | null = null;
+
+function reconcileThemeClasses() {
+  const forced = overrideClassFor(lastThemeSetting, lastVscodeIsDark);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    const wantLight = forced === 'mdfh-force-light';
+    const wantDark = forced === 'mdfh-force-dark';
+    if (el.classList.contains('mdfh-force-light') !== wantLight) {
+      el.classList.toggle('mdfh-force-light', wantLight);
+    }
+    if (el.classList.contains('mdfh-force-dark') !== wantDark) {
+      el.classList.toggle('mdfh-force-dark', wantDark);
+    }
+  }
+}
+
+function ensureThemeClassObserver() {
+  if (themeClassObserver) return;
+  themeClassObserver = new MutationObserver(() => reconcileThemeClasses());
+  const opts: MutationObserverInit = { attributes: true, attributeFilter: ['class'] };
+  themeClassObserver.observe(document.documentElement, opts);
+  themeClassObserver.observe(document.body, opts);
+}
+
+function applyThemeOverride(setting: EditorThemeSetting, vscodeIsDark: boolean) {
+  lastThemeSetting = setting;
+  lastVscodeIsDark = vscodeIsDark;
+  reconcileThemeClasses();
+  ensureThemeClassObserver();
+}
+
+const FORMATTING_SHORTCUT_KEYS = [
+  'b', // Bold
+  'i', // Italic
+  'u', // Underline (some editors)
+];
+
 /**
- * Applies paragraph spacing and zoom settings from an incoming message.
- * Called from both the `update` and `settingsUpdate` handlers.
+ * Whether a Cmd/Ctrl+B/I/U keydown should be captured here (and its
+ * propagation to VS Code stopped) so TipTap can handle it natively, per the
+ * `markdownForHumans.formattingShortcuts.enabled` setting.
+ */
+function shouldInterceptFormattingShortcut(
+  key: string,
+  isMod: boolean,
+  formattingShortcutsEnabled: boolean
+): boolean {
+  return (
+    isMod && formattingShortcutsEnabled && FORMATTING_SHORTCUT_KEYS.includes(key.toLowerCase())
+  );
+}
+
+/**
+ * Whether a Cmd/Ctrl+B/I/U keydown must be swallowed inside TipTap (via
+ * `editorProps.handleKeyDown`) because formatting shortcuts are disabled.
+ * TipTap's StarterKit registers its own Mod-b/i/u keymaps that fire whenever
+ * the editor has focus; without this gate, disabling the setting lets the
+ * chord reach VS Code but STILL applies formatting, so both actions run.
+ */
+function shouldSuppressFormattingShortcut(
+  key: string,
+  isMod: boolean,
+  formattingShortcutsEnabled: boolean
+): boolean {
+  return (
+    isMod && !formattingShortcutsEnabled && FORMATTING_SHORTCUT_KEYS.includes(key.toLowerCase())
+  );
+}
+
+/**
+ * Applies paragraph spacing, zoom, and theme-override settings from an incoming
+ * message. Called from both the `update` and `settingsUpdate` handlers.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyEditorSettings(message: Record<string, any>) {
@@ -1897,6 +1997,9 @@ function applyEditorSettings(message: Record<string, any>) {
   }
   if (typeof message.zoom === 'number') {
     applyZoomLevel(message.zoom);
+  }
+  if (typeof message.formattingShortcutsEnabled === 'boolean') {
+    formattingShortcutsEnabled = message.formattingShortcutsEnabled;
   }
 }
 
@@ -2044,5 +2147,14 @@ export const __testing = {
       shiftKey: Boolean(event.shiftKey),
       altKey: Boolean(event.altKey),
     });
+  },
+  isFormattingShortcutsEnabledForTests() {
+    return formattingShortcutsEnabled;
+  },
+  shouldInterceptFormattingShortcutForTests(key: string, isMod: boolean) {
+    return shouldInterceptFormattingShortcut(key, isMod, formattingShortcutsEnabled);
+  },
+  shouldSuppressFormattingShortcutForTests(key: string, isMod: boolean) {
+    return shouldSuppressFormattingShortcut(key, isMod, formattingShortcutsEnabled);
   },
 };
